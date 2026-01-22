@@ -1,0 +1,26 @@
+[project]
+name = "projekt-rasterdaten"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11.9"
+dependencies = [
+    "cartopy>=0.25.0",
+    "dask>=2025.12.0",
+    "datetime>=6.0",
+    "geopandas>=1.1.2",
+    "matplotlib>=3.10.8",
+    "netcdf4==1.6.5",
+    "numba==0.58.1",
+    "pathlib>=1.0.1",
+    "pyeto",
+    "pyproj==3.7",
+    "regionmask",
+    "scikit-learn>=1.8.0",
+    "shapely>=2.1.2",
+    "tslearn>=0.7.0",
+    "xarray==2024.1.0",
+]
+
+[tool.uv.sources]
+pyeto = { git = "https://github.com/woodcrafty/PyETo.git" }
