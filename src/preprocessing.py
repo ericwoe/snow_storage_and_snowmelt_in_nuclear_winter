@@ -2,6 +2,7 @@ import os
 import xarray as xr
 from pathlib import Path
 import dask
+from land_mask import *
 
 def load_climate_files(data_dir, pattern):
     """
@@ -33,8 +34,9 @@ def load_climate_files(data_dir, pattern):
     ds = xr.open_mfdataset(
         files,
         combine="by_coords",
-        parallel=True,
-        use_cftime=True
+        parallel=False,
+        use_cftime=True,
+        engine = "netcdf4"
     )
     return ds
 
@@ -97,13 +99,10 @@ def kelvin_to_celsius(temperature: xr.DataArray) -> xr.DataArray:
     """
     return temperature - 273.15
 
-
-
-
 if __name__ == "__main__":
     data_directory = "../data/Model_Output_From_Harrison/Temp_Precip/nw_ur_150_07"
     file_pattern = "nw_ur_150_07.cam.h0.*.nc"
-    gadm_path = "../data/gadm_410.gpkg"
+    gadm_path = "../data/GADM/gadm_410.gpkg"
     dataset = load_climate_files(data_directory, file_pattern)
     days_in_month = calculate_days_in_month(dataset)
     dataset["days_in_month"] = days_in_month
@@ -119,8 +118,8 @@ if __name__ == "__main__":
         "units": "Celsius",
         "description": "Surface temperature converted from Kelvin to Celsius"
     }
-
-
-
-
-    
+    land_mask = create_land_mask(dataset, gadm_path)
+    save_land_mask(land_mask, "../data/interim/land_mask/land_mask_nw_ur_150_07.nc")
+    dataset_masked = dataset.where(land_mask)
+    dataset_masked = dataset_masked.drop_vars('time_bnds')
+    dataset_masked.to_netcdf("../data/interim/preprocessed/climate_data_processed.nc")
