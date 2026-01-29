@@ -1,6 +1,6 @@
 import xarray as xr
 from pathlib import Path
-from land_mask import create_land_mask, save_land_mask
+from src import land_mask
 
 
 def load_climate_files(data_dir, pattern) -> xr.Dataset:
@@ -99,29 +99,51 @@ def kelvin_to_celsius(temperature: xr.DataArray) -> xr.DataArray:
     return temperature - 273.15
 
 
-if __name__ == "__main__":
-    data_directory = "../data/Model_Output_From_Harrison/Temp_Precip/nw_ur_150_07"
-    file_pattern = "nw_ur_150_07.cam.h0.*.nc"
-    gadm_path = "../data/GADM/gadm_410.gpkg"
-    dataset = load_climate_files(data_directory, file_pattern)
-    days_in_month = calculate_days_in_month(dataset)
-    dataset["days_in_month"] = days_in_month
-    total_precip_rate = calculate_total_precipitation_rate(dataset)
-    total_precip_rate_mm_mth = convert_precip_to_mm_month(
-        total_precip_rate, dataset["days_in_month"]
-    )
-    dataset["precip_mm_month"] = total_precip_rate_mm_mth
-    dataset["precip_mm_month"].attrs = {
+def run_preprocessing(
+    data_directory: str,
+    file_pattern: str,
+    gadm_path: str,
+    output_path: str,
+    land_mask_path: str,
+):
+    ds = load_climate_files(data_directory, file_pattern)
+
+    # Days per month
+    ds["days_in_month"] = calculate_days_in_month(ds)
+
+    # Precipitation
+    precip_rate = calculate_total_precipitation_rate(ds)
+    ds["precip_mm_month"] = convert_precip_to_mm_month(precip_rate, ds["days_in_month"])
+    ds["precip_mm_month"].attrs = {
         "units": "mm month-1",
         "description": "Total monthly precipitation derived from PRECC and PRECL",
     }
-    dataset["t_mean_celsius"] = kelvin_to_celsius(dataset.TS)
-    dataset["t_mean_celsius"].attrs = {
+
+    # Temperature
+    ds["t_mean_celsius"] = kelvin_to_celsius(ds.TS)
+    ds["t_mean_celsius"].attrs = {
         "units": "Celsius",
         "description": "Surface temperature converted from Kelvin to Celsius",
     }
-    land_mask = create_land_mask(dataset, gadm_path)
-    save_land_mask(land_mask, "../data/interim/land_mask/land_mask_nw_ur_150_07.nc")
-    dataset_masked = dataset.where(land_mask)
-    dataset_masked = dataset_masked.drop_vars("time_bnds")
-    dataset_masked.to_netcdf("../data/interim/preprocessed/climate_data_processed.nc")
+
+    # Land mask
+    landmask = land_mask.create_land_mask(ds, gadm_path)
+    land_mask.save_land_mask(landmask, land_mask_path)
+
+    # Apply mask
+    ds_masked = ds.where(landmask).drop_vars("time_bnds")
+
+    # Save
+    ds_masked.to_netcdf(output_path)
+
+    return ds_masked
+
+
+if __name__ == "__main__":
+    run_preprocessing(
+        data_directory="../data/Model_Output_From_Harrison/Temp_Precip/nw_ur_150_07",
+        file_pattern="nw_ur_150_07.cam.h0.*.nc",
+        gadm_path="../data/GADM/gadm_410.gpkg",
+        land_mask_path="../data/interim/land_mask/land_mask_nw_ur_150_07.nc",
+        output_path="../data/interim/preprocessed/climate_data_processed.nc",
+    )
