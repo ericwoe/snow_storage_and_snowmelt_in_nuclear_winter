@@ -79,3 +79,9 @@ def save_land_mask(land_mask: xr.DataArray, path: str):
         Path to NetCDF file
     """
     land_mask.to_netcdf(path, mode="w", format="NETCDF4")
+
+
+if __name__ == "__main__":
+    # Land mask
+    landmask = land_mask.create_land_mask(ds, gadm_path)
+    land_mask.save_land_mask(landmask, land_mask_path)
