@@ -107,15 +107,41 @@ def calculate_snow_dynamics(
     return snow_storage, snow_melt
 
 
-if __name__ == "__main__":
-    dataset = xr.open_dataset(
-        "../data/interim/preprocessed/climate_data_processed.nc", engine="netcdf4"
-    )
-    snow_storage, snow_melt = calculate_snow_dynamics(
-        precip=dataset["precip_mm_month"].values,
-        t_mean=dataset["t_mean_celsius"].values,
-        days=dataset["days_in_month"].values,
-    )
-    dataset["snow_storage_mm"] = (("time", "lat", "lon"), snow_storage)
-    dataset["snow_melt_mm"] = (("time", "lat", "lon"), snow_melt)
-    dataset.to_netcdf("../results/snow_model_output.nc", engine="netcdf4")
+def add_snow_variables(ds: xr.Dataset) -> xr.Dataset:
+    """
+    Add snow storage and melt variables to the dataset.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Dataset must contain: precip_mm_month, t_mean_celsius, days_in_month
+
+    Returns
+    -------
+    xr.Dataset
+        Dataset with added variables: snow_storage, snow_melt
+    """
+    # Extrahiere NumPy-Arrays
+    precip = ds["precip_mm_month"].values
+    t_mean = ds["t_mean_celsius"].values
+    days = ds["days_in_month"].values
+
+    # Führe Berechnung aus
+    snow_storage, snow_melt = calculate_snow_dynamics(precip, t_mean, days)
+
+    # Füge als xarray-Variablen hinzu (mit Koordinaten!)
+    ds["snow_storage"] = (("time", "lat", "lon"), snow_storage)
+    ds["snow_storage"].attrs = {
+        "units": "mm",
+        "description": "Snow water equivalent storage",
+        "long_name": "Snow storage",
+    }
+
+    ds["snow_melt"] = (("time", "lat", "lon"), snow_melt)
+    ds["snow_melt"].attrs = {
+        "units": "mm month-1",
+        "description": "Monthly snowmelt",
+        "long_name": "Snow melt",
+    }
+
+    return ds

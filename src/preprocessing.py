@@ -98,18 +98,24 @@ def kelvin_to_celsius(temperature: xr.DataArray) -> xr.DataArray:
     return temperature - 273.15
 
 
-def run_preprocessing(
-    data_directory: str, file_pattern: str, output_path: str
-) -> xr.Dataset:
-    print("Loading climate data files")
-    ds = load_climate_files(data_directory, file_pattern)
+def preprocess_dataset(ds: xr.Dataset) -> xr.Dataset:
+    """
+    Apply all preprocessing steps to a dataset.
 
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Raw climate dataset
+
+    Returns
+    -------
+    xr.Dataset
+        Preprocessed dataset
+    """
     # Days per month
-    print("Calculating days in each month")
     ds["days_in_month"] = calculate_days_in_month(ds)
 
     # Precipitation
-    print("Calculating total monthly precipitation")
     precip_rate = calculate_total_precipitation_rate(ds)
     ds["precip_mm_month"] = convert_precip_from_m_s_to_mm_month(
         precip_rate, ds["days_in_month"]
@@ -120,22 +126,29 @@ def run_preprocessing(
     }
 
     # Temperature
-    print("Converting temperature from Kelvin to Celsius")
     ds["t_mean_celsius"] = kelvin_to_celsius(ds.TS)
     ds["t_mean_celsius"].attrs = {
         "units": "Celsius",
         "description": "Surface temperature converted from Kelvin to Celsius",
     }
 
-    # Save processed dataset
-    print(f"Saving processed data to {output_path}")
-    ds.to_netcdf(output_path, engine="netcdf4")
     return ds
 
 
-if __name__ == "__main__":
-    run_preprocessing(
-        data_directory="../data/Model_Output_From_Harrison/Temp_Precip/nw_ur_150_07",
-        file_pattern="nw_ur_150_07.cam.h0.*.nc",
-        output_path="../data/interim/preprocessed/climate_data_processed.nc",
-    )
+def run_preprocessing(
+    data_directory: str, file_pattern: str, output_path: str | None = None
+) -> xr.Dataset:
+    """
+    Complete preprocessing pipeline: load, process, and optionally save.
+    """
+    print("Loading climate data files")
+    ds = load_climate_files(data_directory, file_pattern)
+
+    print("Preprocessing dataset")
+    ds = preprocess_dataset(ds)
+
+    if output_path:
+        print(f"Saving processed data to {output_path}")
+        ds.to_netcdf(output_path, engine="netcdf4")
+
+    return ds
