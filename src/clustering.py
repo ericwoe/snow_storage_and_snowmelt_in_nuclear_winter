@@ -53,16 +53,3 @@ def time_series_analysis(timeseries_object: np.ndarray, n_clusters):
     )
     labels = km.fit_predict(timeseries_scaled)
     return labels, km
-
-
-if __name__ == "__main__":
-    ds = xr.open_dataset("../results/snow_dataset.nc")
-
-    da = ds.snow_storage
-    timeseries = prepare_time_series(da)
-    print(timeseries.shape)
-
-    print("Begin Time Series Analysis")
-    labels, km_model = time_series_analysis(timeseries, n_clusters=5)
-
-    print(km_model)
