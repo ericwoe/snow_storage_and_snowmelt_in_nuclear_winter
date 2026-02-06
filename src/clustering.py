@@ -47,7 +47,6 @@ def time_series_analysis(timeseries_object: np.ndarray, n_clusters):
         metric="dtw",
         n_jobs=-1,  # use all cpu cores
         max_iter=50,
-        tol=1e-3,
         random_state=42,
         verbose=1,
     )
