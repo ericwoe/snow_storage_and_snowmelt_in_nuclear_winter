@@ -5,11 +5,11 @@ import xarray as xr
 from pathlib import Path
 
 
-DATA_DIR = "./data/Model_Output_From_Harrison/Temp_Precip/nw_ur_150_07"
-PATTERN = "nw_ur_150_07.cam.h0.*.nc"
+DATA_DIR = "./data/Model_Output_From_Harrison/Temp_Precip/nw_cntrl_03"
+PATTERN = "nw_cntrl_03.cam.h0.*.nc"
 GADM_FILE_PATH = "./data/GADM/gadm_410.gpkg"
 LAND_MASK_OUTPUT_PATH = "./data/interim/land_mask.nc"
-RESULT_OUTPUT_PATH = "./results/snow_dataset.nc"
+RESULT_OUTPUT_PATH = "./results/snow_dataset_nw_cntrl_03.nc"
 
 # Preprare Dataset
 ds = src.preprocessing.run_preprocessing(

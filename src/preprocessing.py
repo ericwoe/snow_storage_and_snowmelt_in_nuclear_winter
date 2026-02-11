@@ -149,6 +149,8 @@ def run_preprocessing(
 
     if output_path:
         print(f"Saving processed data to {output_path}")
+        print("Deleting time_bnds")
+        ds.drop_vars("time_bnds")
         ds.to_netcdf(output_path, engine="netcdf4")
 
     return ds
