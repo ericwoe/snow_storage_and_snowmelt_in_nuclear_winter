@@ -25,7 +25,7 @@ def prepare_time_series(da: xr.DataArray) -> np.ndarray:
 
 def time_series_analysis(timeseries_object: np.ndarray, n_clusters):
     """
-    Does time series analysis on the dataarray
+    Does time series analysis on the timeseries objects.
     All the time serieses are clustered based on their
     overall shape using k-means
     Inspired by this article:

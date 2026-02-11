@@ -10,6 +10,7 @@ dependencies = [
     "datetime>=6.0",
     "geopandas>=1.1.2",
     "matplotlib>=3.10.8",
+    "nc-time-axis>=1.4.1",
     "netcdf4==1.6.5",
     "numba==0.58.1",
     "numpy>=1.26.4",
