@@ -1,23 +1,24 @@
 import xarray as xr
 import numpy as np
-from src.processing import snow_model
 import matplotlib.pyplot as plt
 import cftime
+from basin_analysis import create_mask
+import geopandas as gpd
 
 
 def change_time(ds):
-    # Zeitkoordinate um einen Monat verschieben
-    ds_new_time = ds.assign_coords(
-        time=[
-            cftime.DatetimeNoLeap(
-                t.year if t.month > 1 else t.year - 1,
-                t.month - 1 if t.month > 1 else 12,
-                1,
-            )
-            for t in ds.time.values
-        ]
-    )
-    return ds_new_time
+    # Neue Zeitwerte berechnen
+    new_time = [
+        cftime.DatetimeNoLeap(
+            t.year if t.month > 1 else t.year - 1,
+            t.month - 1 if t.month > 1 else 12,
+            1,
+        )
+        for t in ds.time.values
+    ]
+
+    # Koordinate direkt ersetzen (in-place)
+    ds.coords["time"] = new_time
 
 
 def compute_cell_area(da):
@@ -71,7 +72,7 @@ def annual_sum(da):
     return da.groupby("time.year").sum(dim="time")
 
 
-def percentage_snow_cover_monthly(da, cell_area, mask):
+def snow_covered_area_proportion_monthly(da, cell_area, mask):
     # Schnee vorhanden?
     snow = da > 0
 
@@ -87,13 +88,13 @@ def percentage_snow_cover_monthly(da, cell_area, mask):
     return percentage
 
 
-def plot_global_snow_sum_per_year(*arrays, cell_area=None):
+def plot_global_snow_sum_per_month(*datasets, cell_area=None, mask=None, variable=None):
 
     fig, ax = plt.subplots(figsize=(8, 5))
 
-    for i, da in enumerate(arrays):
-        snow_sum = global_snow_sum_per_year(da.snow_storage, cell_area)
-        snow_sum.plot(ax=ax, label=da.case)
+    for i, ds in enumerate(datasets):
+        snow_sum_monthly = sum_per_month(ds[variable], cell_area=cell_area, mask=mask)
+        snow_sum_monthly.plot(ax=ax, label=ds.case)
 
     ax.set_xlabel("Zeit")
     ax.legend()
@@ -101,15 +102,191 @@ def plot_global_snow_sum_per_year(*arrays, cell_area=None):
     plt.show()
 
 
-def plot_global_snow_sum_anomaly_per_year(*arrays, control=None, cell_area=None):
+def plot_global_snow_sum_per_year(*datasets, cell_area=None, mask=None, variable=None):
 
     fig, ax = plt.subplots(figsize=(8, 5))
 
-    for i, da in enumerate(arrays):
-        snow_sum = global_snow_sum_per_year(
-            da.snow_storage - control.snow_storage, cell_area
+    for i, ds in enumerate(datasets):
+        mean_snow_sum = mean_per_year(
+            sum_per_month(ds[variable], cell_area=cell_area, mask=mask)
         )
-        snow_sum.plot(ax=ax, label=da.case)
+        mean_snow_sum.plot(ax=ax, label=ds.case)
+
+    ax.set_xlabel("Zeit")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_global_snow_sum_anomaly_per_year(
+    *datasets, control=None, cell_area=None, mask=None, variable=None
+):
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for i, ds in enumerate(datasets):
+        mean_snow_sum_anomaly = mean_per_year(
+            sum_per_month(
+                ds[variable] - control[variable], cell_area=cell_area, mask=mask
+            )
+        )
+        mean_snow_sum_anomaly.plot(ax=ax, label=ds.case)
+
+    ax.set_xlabel("Zeit")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_global_snow_sum_anomaly_per_month(
+    *datasets, control=None, cell_area=None, mask=None, variable=None
+):
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for i, ds in enumerate(datasets):
+        monthly_snow_sum_anomaly = sum_per_month(
+            ds[variable] - control[variable], cell_area=cell_area, mask=mask
+        )
+        monthly_snow_sum_anomaly.plot(ax=ax, label=ds.case)
+
+    ax.set_xlabel("Zeit")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_global_snow_cover_monthly(*datasets, cell_area=None, mask=None):
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for i, ds in enumerate(datasets):
+        snow_cover_monthly = snow_covered_area_proportion_monthly(
+            ds.snow_storage, cell_area=cell_area, mask=mask
+        )
+
+        snow_cover_monthly.plot(ax=ax, label=ds.case)
+
+    ax.set_xlabel("Zeit")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_global_snow_cover_mean_per_year(*datasets, cell_area=None, mask=None):
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for i, ds in enumerate(datasets):
+        snow_cover_year = mean_per_year(
+            snow_covered_area_proportion_monthly(
+                ds.snow_storage, cell_area=cell_area, mask=mask
+            )
+        )
+
+        snow_cover_year.plot(ax=ax, label=ds.case)
+
+    ax.set_xlabel("Zeit")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_global_snow_cover_anomaly_monthly(
+    *datasets, control=None, cell_area=None, mask=None
+):
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    snow_cover_control = snow_covered_area_proportion_monthly(
+        control.snow_storage, cell_area=cell_area, mask=mask
+    )
+    for i, ds in enumerate(datasets):
+        snow_cover_monthly = snow_covered_area_proportion_monthly(
+            ds.snow_storage, cell_area=cell_area, mask=mask
+        )
+
+        (snow_cover_monthly - snow_cover_control).plot(ax=ax, label=ds.case)
+
+    ax.set_xlabel("Zeit")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_global_snow_cover_anomaly_per_year(
+    *datasets, control=None, cell_area=None, mask=None
+):
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    snow_cover_control_mean_year = mean_per_year(
+        snow_covered_area_proportion_monthly(
+            control.snow_storage, cell_area=cell_area, mask=mask
+        )
+    )
+    for i, ds in enumerate(datasets):
+        snow_cover_mean_year = mean_per_year(
+            snow_covered_area_proportion_monthly(
+                ds.snow_storage, cell_area=cell_area, mask=mask
+            )
+        )
+
+        (
+            (snow_cover_mean_year - snow_cover_control_mean_year)
+            / snow_cover_control_mean_year
+            * 100
+        ).plot(ax=ax, label=ds.case)
+
+    ax.set_xlabel("Zeit")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_global_snow_melt_per_month(
+    *datasets, cell_area=None, mask=None, variable=None
+):
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for i, ds in enumerate(datasets):
+        snow_sum_monthly = sum_per_month(ds[variable], cell_area=cell_area, mask=mask)
+        snow_sum_monthly.plot(ax=ax, label=ds.case)
+
+    ax.set_xlabel("Zeit")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_global_snow_melt_per_year(*datasets, cell_area=None, mask=None, variable=None):
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for i, ds in enumerate(datasets):
+        mean_snow_sum = annual_sum(
+            sum_per_month(ds[variable], cell_area=cell_area, mask=mask)
+        )
+        mean_snow_sum.plot(ax=ax, label=ds.case)
+
+    ax.set_xlabel("Zeit")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_global_snow_melt_anomaly_per_year(
+    *datasets, control=None, cell_area=None, mask=None, variable=None
+):
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for i, ds in enumerate(datasets):
+        mean_snow_sum_anomaly = annual_sum(
+            sum_per_month(
+                ds[variable] - control[variable], cell_area=cell_area, mask=mask
+            )
+        )
+        mean_snow_sum_anomaly.plot(ax=ax, label=ds.case)
 
     ax.set_xlabel("Zeit")
     ax.legend()
@@ -119,27 +296,116 @@ def plot_global_snow_sum_anomaly_per_year(*arrays, control=None, cell_area=None)
 
 if __name__ == "__main__":
 
-    ds_t5 = xr.open_dataset("./results/snow_dataset_nw_targets_05.nc")
-    ds_t4 = xr.open_dataset("./results/snow_dataset_nw_targets_04.nc")
-    ds_150 = xr.open_dataset("./results/snow_dataset_150_tg.nc")
-    ds_ctrl = xr.open_dataset("./results/snow_dataset_nw_cntrl_03.nc")
+    ds_t5 = xr.open_dataset("./results/snow_57.nc")
+    ds_t4 = xr.open_dataset("./results/snow_47.nc")
+    ds_150 = xr.open_dataset("./results/snow_150.nc")
+    ds_ctrl = xr.open_dataset("./results/snow_control.nc")
+    mask = xr.open_dataarray("./data/interim/land_mask_neu.nc")
 
     cell_area = compute_cell_area(ds_ctrl.snow_storage)
 
-    # Align the Datasets (time dimension)
-    ds_ctrl_al, ds_t4_al, ds_t5_al, ds_150_al = xr.align(
-        ds_ctrl, ds_t4, ds_t5, ds_150, join="inner"
+    for ds in [ds_t5, ds_t4, ds_150, ds_ctrl]:
+        change_time(ds)
+
+    plot_global_snow_sum_per_month(
+        ds_t5,
+        ds_t4,
+        ds_150,
+        ds_ctrl,
+        cell_area=cell_area,
+        mask=mask,
+        variable="snow_storage",
+    )
+    plot_global_snow_sum_per_year(
+        ds_t5,
+        ds_t4,
+        ds_150,
+        ds_ctrl,
+        cell_area=cell_area,
+        mask=mask,
+        variable="snow_storage",
+    )
+    plot_global_snow_sum_anomaly_per_month(
+        ds_t5,
+        ds_t4,
+        ds_150,
+        control=ds_ctrl,
+        cell_area=cell_area,
+        mask=mask,
+        variable="snow_storage",
+    )
+    plot_global_snow_sum_anomaly_per_year(
+        ds_t5,
+        ds_t4,
+        ds_150,
+        control=ds_ctrl,
+        cell_area=cell_area,
+        mask=mask,
+        variable="snow_storage",
+    )
+    plot_global_snow_cover_monthly(
+        ds_t5, ds_t4, ds_150, ds_ctrl, cell_area=cell_area, mask=mask
+    )
+    plot_global_snow_cover_mean_per_year(
+        ds_t5, ds_t4, ds_150, ds_ctrl, cell_area=cell_area, mask=mask
+    )
+    plot_global_snow_cover_anomaly_monthly(
+        ds_t5, ds_t4, ds_150, control=ds_ctrl, cell_area=cell_area, mask=mask
+    )
+    plot_global_snow_cover_anomaly_per_year(
+        ds_t5, ds_t4, ds_150, control=ds_ctrl, cell_area=cell_area, mask=mask
     )
 
-    # recalculate snow_storage and snow_melt for control scenario
-    # snow_storage und snow_melt löschen
-    ds_ctrl_al = ds_ctrl_al.drop_vars(["snow_storage", "snow_melt"])
+    main_rivers = {
+        "Rhine": [
+            "./data/HydroBasins/hybas_eu_lev01-12_v1c/hybas_eu_lev04_v1c.shp",
+            2040023010,
+        ],
+        "Yellow River": [
+            "./data/HydroBasins/hybas_as_lev01-12_v1c/hybas_as_lev04_v1c.shp",
+            4040007850,
+        ],
+        "Nile": [
+            "./data/HydroBasins/hybas_af_lev01-12_v1c/hybas_af_lev04_v1c.shp",
+            1040034260,
+        ],
+        "Mississippi": [
+            "./data/HydroBasins/hybas_na_lev01-12_v1c/hybas_na_lev04_v1c.shp",
+            7040047060,
+        ],
+    }
 
-    # snow model neu rechnen
-    snow_model.add_snow_variables(ds_ctrl_al)
-
-    all_ds = [ds_ctrl_al, ds_t4_al, ds_t5_al, ds_150_al]
-    nw_sc = [ds_t4_al, ds_t5_al, ds_150_al]
-    control = ds_ctrl_al
-    plot_global_snow_sum_per_year(*all_ds, cell_area=cell_area)
-    plot_global_snow_sum_anomaly_per_year(*nw_sc, control=control, cell_area=cell_area)
+    for river, (filepath, river_id) in main_rivers.items():
+        # Select river from Data
+        basins_lev4 = gpd.read_file(filepath)
+        river_basin = basins_lev4[basins_lev4["MAIN_BAS"] == river_id]
+        river_basin_diss = river_basin.dissolve()
+        # Fraction of Raster Cells in River Basin
+        river_mask = create_mask(ds_150, river_basin_diss)
+        plot_global_snow_melt_per_month(
+            ds_t5,
+            ds_t4,
+            ds_150,
+            ds_ctrl,
+            cell_area=cell_area,
+            mask=river_mask,
+            variable="snow_melt",
+        )
+        plot_global_snow_melt_per_year(
+            ds_t5,
+            ds_t4,
+            ds_150,
+            ds_ctrl,
+            cell_area=cell_area,
+            mask=river_mask,
+            variable="snow_melt",
+        )
+        plot_global_snow_melt_anomaly_per_year(
+            ds_t5,
+            ds_t4,
+            ds_150,
+            control=ds_ctrl,
+            cell_area=cell_area,
+            mask=river_mask,
+            variable="snow_melt",
+        )

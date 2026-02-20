@@ -3,50 +3,86 @@ from src.preprocessing.land_mask import create_land_mask
 from src.processing.snow_model import add_snow_variables
 import xarray as xr
 from pathlib import Path
-import importlib
 
-# Modul neu laden
-importlib.reload(prepare_data)
 
-DATA_DIR = "./data/Model_Output_From_Harrison/Temp_Precip/nw_targets_05"
-PATTERN = "nw_targets_05.cam.h0.*.nc"
-GADM_FILE_PATH = "./data/GADM/gadm_410.gpkg"
-LAND_MASK_OUTPUT_PATH = "./data/interim/land_mask.nc"
-RESULT_OUTPUT_PATH = "./results/snow_dataset_nw_targets_05.nc"
+SCENARIOS = {
+    "Control": {
+        "data_dir": "./data/Model_Output_From_Harrison/Temp_Precip/nw_cntrl_03",
+        "pattern": "nw_cntrl_03.cam.h0.*.nc",
+        "result_path": "./results/snow_control.nc",
+    },
+    "16": {
+        "data_dir": "./data/Model_Output_From_Harrison/Temp_Precip/nw_targets_04",
+        "pattern": "nw_targets_04.cam.h0.*.nc",
+        "result_path": "./results/snow_16.nc",
+    },
+    "47": {
+        "data_dir": "./data/Model_Output_From_Harrison/Temp_Precip/nw_targets_05",
+        "pattern": "nw_targets_05.cam.h0.*.nc",
+        "result_path": "./results/snow_47.nc",
+    },
+    "150": {
+        "data_dir": "./data/Model_Output_From_Harrison/Temp_Precip/nw_ur_150_07",
+        "pattern": "nw_ur_150_07.cam.h0.*.nc",
+        "result_path": "./results/snow_150.nc",
+    },
+}
 
-# Preprare Dataset
-ds = prepare_data.run_preprocessing(
-    data_directory=DATA_DIR, file_pattern=PATTERN, output_path=None
-)
+GADM_FILE_PATH = "./data/ne_110m_land/ne_110m_land.shp"
+LAND_MASK_OUTPUT_PATH = "./data/interim/land_mask_neu.nc"
 
-# Run Snow Model
-ds = add_snow_variables(ds)
 
-# Create or import land mask
-land_mask_path = Path(LAND_MASK_OUTPUT_PATH)
-if land_mask_path.exists():
-    print("Loading existing land mask")
-    mask = xr.open_dataarray(land_mask_path)
-else:
-    print("Creating land mask")
-    mask = create_land_mask(ds, gadm_path=GADM_FILE_PATH)
-    print(f"Saving Mask to {LAND_MASK_OUTPUT_PATH}")
+datasets = {}
+
+# Read in Data
+for name, config in SCENARIOS.items():
+    ds = prepare_data.run_preprocessing(
+        data_directory=config["data_dir"],
+        file_pattern=config["pattern"],
+        output_path=None,
+    )
+    datasets[name] = ds
+
+# Align Datasets
+aligned = xr.align(*datasets.values(), join="inner")
+
+# Back to Dict
+datasets = dict(zip(datasets.keys(), aligned))
+
+for name, ds in datasets.items():
+
+    ds = add_snow_variables(ds)
+
+    # Run Snow Model
+    ds = add_snow_variables(ds)
+
+    # Create or import land mask
+    land_mask_path = Path(LAND_MASK_OUTPUT_PATH)
+    if land_mask_path.exists():
+        print("Loading existing land mask")
+        mask = xr.open_dataarray(land_mask_path)
+    else:
+        print("Creating land mask")
+        mask = create_land_mask(ds, gadm_path=GADM_FILE_PATH)
+        print(f"Saving Mask to {LAND_MASK_OUTPUT_PATH}")
+        # Ensure directory exists
+        land_mask_path.parent.mkdir(parents=True, exist_ok=True)
+        # Save mask to NetCDF
+        mask.to_netcdf(land_mask_path)
+
+    # Apply land mask to dataset
+    print("Applying land mask to dataset")
+    ds = ds.where(mask > 0)
+
+    # Delete time_bnds to avoid saving conflict
+    print("Deleting time_bnds")
+    ds = ds.drop_vars("time_bnds")
+
+    # Save final dataset
+    print(f"Saving {name} dataset to {SCENARIOS[name]['result_path']}")
+    result_path = Path(SCENARIOS[name]["result_path"])
     # Ensure directory exists
-    land_mask_path.parent.mkdir(parents=True, exist_ok=True)
-    # Save mask to NetCDF
-    mask.to_netcdf(land_mask_path)
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    ds.to_netcdf(result_path)
 
-# Apply land mask to dataset
-print("Applying land mask to dataset")
-ds = ds.where(mask)
-
-# Delete time_bnds to avoid saving conflict
-print("Deleting time_bnds")
-ds = ds.drop_vars("time_bnds")
-
-# Save final dataset
-print(f"Saving final dataset to {RESULT_OUTPUT_PATH}")
-result_path = Path(RESULT_OUTPUT_PATH)
-# Ensure directory exists
-result_path.parent.mkdir(parents=True, exist_ok=True)
-ds.to_netcdf(result_path)
+    ds

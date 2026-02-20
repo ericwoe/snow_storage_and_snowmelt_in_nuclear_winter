@@ -46,7 +46,7 @@ def create_mask(ds: xr.Dataset, shape: gpd.GeoDataFrame) -> xr.DataArray:
     cells_gdf = gpd.GeoDataFrame(geometry=polygons, crs="EPSG:4326")
 
     # Merge all shapes into one polygon (falls mehrere Polygone im GeoDataFrame)
-    shape_union = shape.unary_union
+    shape_union = shape.union_all()
 
     # Calculate fractional coverage for each cell
     fractional_coverage = np.zeros(len(polygons), dtype=float)
