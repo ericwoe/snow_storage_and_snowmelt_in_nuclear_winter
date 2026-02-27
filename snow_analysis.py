@@ -88,6 +88,303 @@ def snow_covered_area_proportion_monthly(da, cell_area, mask):
     return percentage
 
 
+def compute_zonal_snow_cover(da, mask):
+    """
+    Berechnet den Anteil der schneebedeckten Landfläche pro Breitengrad und Zeitschritt,
+    gewichtet mit dem Landanteil (mask).
+
+    Parameter
+    ----------
+    da : xarray.DataArray
+        snow_storage mit Dimensionen (time, lat, lon)
+    mask : xarray.DataArray
+        Landanteil pro Zelle (0 bis 1), Dimensionen (lat, lon)
+
+    Returns
+    -------
+    zonal_snow_cover : xarray.DataArray
+        Anteil der schneebedeckten Landfläche in % (time, lat)
+    """
+    snow = (da > 0).astype(float)
+
+    # Zähler: Summe der schneebedeckten Landanteile pro Breitengrad
+    snow_land = (snow * mask).sum(dim="lon")
+
+    # Nenner: Gesamter Landanteil pro Breitengrad
+    total_land = mask.sum(dim="lon")
+
+    # Division, wo Land vorhanden ist
+    zonal_snow_cover = (snow_land / total_land.where(total_land > 0)) * 100
+
+    return zonal_snow_cover
+
+
+def compute_zonal_snow_cover_anomaly(da, da_control, mask):
+    """
+    Berechnet die Anomalie der zonalen Schneebedeckung
+    gegenüber dem Control-Szenario.
+
+    Parameter
+    ----------
+    da : xarray.DataArray
+        snow_storage des Szenarios (time, lat, lon)
+    da_control : xarray.DataArray
+        snow_storage des Control-Szenarios (time, lat, lon)
+    mask : xarray.DataArray
+        Landanteil pro Zelle (0 bis 1), Dimensionen (lat, lon)
+
+    Returns
+    -------
+    zonal_anomaly : xarray.DataArray
+        Zonale Anomalie der Schneebedeckung in Prozentpunkten (time, lat)
+    """
+    zonal_scenario = compute_zonal_snow_cover(da, mask)
+    zonal_control = compute_zonal_snow_cover(da_control, mask)
+    return zonal_scenario - zonal_control
+
+
+def plot_hovmoeller_snow_cover_anomaly(
+    *datasets, control=None, mask=None, savedir="./results/allgemeine_muster"
+):
+    """
+    Erstellt Hovmöller-Diagramme der Anomalie der zonalen Schneebedeckung
+    gegenüber dem Control-Szenario.
+
+    Parameter
+    ----------
+    *datasets : xarray.Dataset
+        Szenarien (ohne Control)
+    control : xarray.Dataset
+        Control-Szenario
+    mask : xarray.DataArray
+        Landanteil pro Zelle (0 bis 1)
+    savedir : str
+        Verzeichnis zum Speichern der Abbildung
+    """
+    import os
+    from matplotlib.colors import TwoSlopeNorm
+
+    os.makedirs(savedir, exist_ok=True)
+
+    n = len(datasets)
+
+    all_anomalies = []
+    for ds in datasets:
+        anomaly = compute_zonal_snow_cover_anomaly(
+            ds.snow_storage, control.snow_storage, mask
+        )
+        all_anomalies.append(anomaly)
+
+    # Symmetrische Farbskala
+    all_values = np.concatenate([a.values.flatten() for a in all_anomalies])
+    all_values = all_values[~np.isnan(all_values)]
+    vabs = np.percentile(np.abs(all_values), 99)
+
+    norm = TwoSlopeNorm(vmin=-vabs, vcenter=0, vmax=vabs)
+
+    fig, axes = plt.subplots(n, 1, figsize=(14, 3 * n), sharex=True, sharey=True)
+
+    if n == 1:
+        axes = [axes]
+
+    for ax, ds, anomaly in zip(axes, datasets, all_anomalies):
+        time_vals = np.arange(len(ds.time))
+        lat_vals = ds.lat.values
+
+        im = ax.pcolormesh(
+            time_vals,
+            lat_vals,
+            anomaly.values.T,
+            cmap="RdBu",
+            norm=norm,
+            shading="nearest",
+        )
+
+        ax.set_ylabel("Latitude [°]")
+        ax.set_title(f"Anomaly of zonal snow cover – {ds.case}", fontsize=11)
+
+        year_ticks = np.arange(0, len(ds.time), 12)
+        year_labels = [ds.time.values[i].year for i in year_ticks]
+        ax.set_xticks(year_ticks)
+        ax.set_xticklabels(year_labels)
+
+    axes[-1].set_xlabel("Year")
+
+    fig.colorbar(
+        im,
+        ax=axes,
+        label="Δ Snow covered land area [pp]",
+        location="right",
+        shrink=0.6,
+        pad=0.015,
+        aspect=30,
+    )
+
+    plt.tight_layout()
+    fig.savefig(
+        os.path.join(savedir, "hovmoeller_snow_cover_anomaly.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
+
+def plot_hovmoeller_single(ds, mask=None):
+    """
+    Erstellt ein einzelnes Hovmöller-Diagramm (Zeit x Breitengrad) der zonalen
+    Schneebedeckung.
+
+    Parameter
+    ----------
+    ds : xarray.Dataset
+        Dataset mit snow_storage und Attribut 'case'
+    mask : xarray.DataArray
+        Landanteil pro Zelle (0 bis 1)
+    """
+    zonal = compute_zonal_snow_cover(ds.snow_storage, mask)
+
+    time_vals = np.arange(len(ds.time))
+    lat_vals = ds.lat.values
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+
+    im = ax.pcolormesh(
+        time_vals,
+        lat_vals,
+        zonal.values.T,
+        cmap="Blues",
+        vmin=0,
+        vmax=100,
+        shading="nearest",
+    )
+
+    year_ticks = np.arange(0, len(ds.time), 12)
+    year_labels = [ds.time.values[i].year for i in year_ticks]
+    ax.set_xticks(year_ticks)
+    ax.set_xticklabels(year_labels)
+
+    ax.set_xlabel("Year")
+    ax.set_ylabel("Latitude [°]")
+    ax.set_title(f"Zonal Snow Cover – {ds.case}")
+
+    fig.colorbar(im, ax=ax, label="Snow covered land area [%]", shrink=0.8)
+
+    plt.tight_layout()
+    plt.show()
+
+
+def compute_zonal_mean_snow_storage(da, mask):
+    """
+    Berechnet den zonal gemittelten snow_storage pro Breitengrad und Zeitschritt,
+    gewichtet mit dem Landanteil (mask).
+
+    Parameter
+    ----------
+    da : xarray.DataArray
+        snow_storage mit Dimensionen (time, lat, lon)
+    mask : xarray.DataArray
+        Landanteil pro Zelle (0 bis 1), Dimensionen (lat, lon)
+
+    Returns
+    -------
+    zonal_mean : xarray.DataArray
+        Zonal gemittelter snow_storage (time, lat)
+    """
+    weighted_sum = (da * mask).sum(dim="lon")
+    total_land = mask.sum(dim="lon")
+    zonal_mean = weighted_sum / total_land.where(total_land > 0)
+    return zonal_mean
+
+
+def plot_hovmoeller_snow_storage(
+    *datasets, mask=None, savedir="./results/allgemeine_muster"
+):
+    """
+    Erstellt Hovmöller-Diagramme des zonal gemittelten snow_storage
+    für mehrere Szenarien in einem Multi-Panel-Plot.
+
+    Parameter
+    ----------
+    *datasets : xarray.Dataset
+        Beliebig viele Datasets mit snow_storage und Attribut 'case'
+    mask : xarray.DataArray
+        Landanteil pro Zelle (0 bis 1)
+    savedir : str
+        Verzeichnis zum Speichern der Abbildung
+    """
+    import os
+    from matplotlib.colors import LogNorm
+
+    os.makedirs(savedir, exist_ok=True)
+
+    n = len(datasets)
+
+    # Zonal gemittelte Werte vorab berechnen
+    all_zonal = []
+    for ds in datasets:
+        zonal = compute_zonal_mean_snow_storage(ds.snow_storage, mask)
+        all_zonal.append(zonal)
+
+    # Gemeinsames vmax aus 95. Perzentil
+    all_values = np.concatenate([z.values.flatten() for z in all_zonal])
+    all_values = all_values[~np.isnan(all_values)]
+    all_values = all_values[all_values > 0]
+    vmin = 1  # Untergrenze für LogNorm (0 geht nicht)
+    vmax = np.percentile(all_values, 99)
+
+    fig, axes = plt.subplots(n, 1, figsize=(14, 3 * n), sharex=True, sharey=True)
+
+    if n == 1:
+        axes = [axes]
+
+    norm = LogNorm(vmin=vmin, vmax=vmax)
+
+    for ax, ds, zonal in zip(axes, datasets, all_zonal):
+        time_vals = np.arange(len(ds.time))
+        lat_vals = ds.lat.values
+
+        # Werte < vmin auf NaN setzen damit LogNorm nicht kracht
+        plot_data = zonal.values.T.copy()
+        plot_data[plot_data < vmin] = np.nan
+
+        im = ax.pcolormesh(
+            time_vals,
+            lat_vals,
+            plot_data,
+            cmap="YlGnBu",
+            norm=norm,
+            shading="nearest",
+        )
+
+        ax.set_ylabel("Latitude [°]")
+        ax.set_title(ds.case, fontsize=11)
+
+        year_ticks = np.arange(0, len(ds.time), 12)
+        year_labels = [ds.time.values[i].year for i in year_ticks]
+        ax.set_xticks(year_ticks)
+        ax.set_xticklabels(year_labels)
+
+    axes[-1].set_xlabel("Year")
+
+    fig.colorbar(
+        im,
+        ax=axes,
+        label="Snow storage [mm]",
+        location="right",
+        shrink=0.6,
+        pad=0.015,
+        aspect=30,
+    )
+
+    plt.tight_layout()
+    fig.savefig(
+        os.path.join(savedir, "hovmoeller_snow_storage.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
+
 def plot_global_snow_sum_per_month(*datasets, cell_area=None, mask=None, variable=None):
 
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -374,6 +671,7 @@ if __name__ == "__main__":
             7040047060,
         ],
     }
+    plot_hovmoeller_snow_cover_anomaly(ds_t5, ds_t4, ds_150, control=ds_ctrl, mask=mask)
 
     for river, (filepath, river_id) in main_rivers.items():
         # Select river from Data
