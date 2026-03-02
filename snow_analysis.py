@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import cftime
 from basin_analysis import create_mask
 import geopandas as gpd
+import os
 
 
 def change_time(ds):
@@ -143,28 +144,8 @@ def compute_zonal_snow_cover_anomaly(da, da_control, mask):
     return zonal_scenario - zonal_control
 
 
-def plot_hovmoeller_snow_cover_anomaly(
-    *datasets, control=None, mask=None, savedir="./results/allgemeine_muster"
-):
-    """
-    Erstellt Hovmöller-Diagramme der Anomalie der zonalen Schneebedeckung
-    gegenüber dem Control-Szenario.
-
-    Parameter
-    ----------
-    *datasets : xarray.Dataset
-        Szenarien (ohne Control)
-    control : xarray.Dataset
-        Control-Szenario
-    mask : xarray.DataArray
-        Landanteil pro Zelle (0 bis 1)
-    savedir : str
-        Verzeichnis zum Speichern der Abbildung
-    """
-    import os
+def plot_hovmoeller_snow_cover_anomaly(*datasets, control=None, mask=None):
     from matplotlib.colors import TwoSlopeNorm
-
-    os.makedirs(savedir, exist_ok=True)
 
     n = len(datasets)
 
@@ -175,14 +156,15 @@ def plot_hovmoeller_snow_cover_anomaly(
         )
         all_anomalies.append(anomaly)
 
-    # Symmetrische Farbskala
     all_values = np.concatenate([a.values.flatten() for a in all_anomalies])
     all_values = all_values[~np.isnan(all_values)]
     vabs = np.percentile(np.abs(all_values), 99)
 
     norm = TwoSlopeNorm(vmin=-vabs, vcenter=0, vmax=vabs)
 
-    fig, axes = plt.subplots(n, 1, figsize=(14, 3 * n), sharex=True, sharey=True)
+    fig, axes = plt.subplots(
+        n, 1, figsize=(14, 3 * n), sharex=True, sharey=True, constrained_layout=True
+    )
 
     if n == 1:
         axes = [axes]
@@ -201,7 +183,7 @@ def plot_hovmoeller_snow_cover_anomaly(
         )
 
         ax.set_ylabel("Latitude [°]")
-        ax.set_title(f"Anomaly of zonal snow cover – {ds.case}", fontsize=11)
+        ax.set_title("Anomaly of zonal snow cover", fontsize=11)
 
         year_ticks = np.arange(0, len(ds.time), 12)
         year_labels = [ds.time.values[i].year for i in year_ticks]
@@ -213,16 +195,14 @@ def plot_hovmoeller_snow_cover_anomaly(
     fig.colorbar(
         im,
         ax=axes,
-        label="Δ Snow covered land area [pp]",
+        label="Δ Snow covered land area [%]",
         location="right",
         shrink=0.6,
         pad=0.015,
         aspect=30,
     )
-
-    plt.tight_layout()
     fig.savefig(
-        os.path.join(savedir, "hovmoeller_snow_cover_anomaly.png"),
+        "./results/intercomparison/hovmoeller/snow_cover_anomaly_percent.png",
         dpi=300,
         bbox_inches="tight",
     )
@@ -296,7 +276,7 @@ def compute_zonal_mean_snow_storage(da, mask):
     return zonal_mean
 
 
-def plot_hovmoeller_snow_storage(
+def plot_hovmoeller_mean_snow_storage(
     *datasets, mask=None, savedir="./results/allgemeine_muster"
 ):
     """
@@ -312,7 +292,6 @@ def plot_hovmoeller_snow_storage(
     savedir : str
         Verzeichnis zum Speichern der Abbildung
     """
-    import os
     from matplotlib.colors import LogNorm
 
     os.makedirs(savedir, exist_ok=True)
@@ -378,7 +357,128 @@ def plot_hovmoeller_snow_storage(
 
     plt.tight_layout()
     fig.savefig(
-        os.path.join(savedir, "hovmoeller_snow_storage.png"),
+        "./results/intercomparison/hovmoeller/mean_snow_storage.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
+
+def compute_zonal_mean_snow_storage_anomaly(da, da_control, mask):
+    """
+    Berechnet die prozentuale Anomalie des zonal gemittelten snow_storage
+    gegenüber dem Control-Szenario.
+
+    Parameter
+    ----------
+    da : xarray.DataArray
+        snow_storage des Szenarios (time, lat, lon)
+    da_control : xarray.DataArray
+        snow_storage des Control-Szenarios (time, lat, lon)
+    mask : xarray.DataArray
+        Landanteil pro Zelle (0 bis 1), Dimensionen (lat, lon)
+
+    Returns
+    -------
+    zonal_anomaly_pct : xarray.DataArray
+        Prozentuale zonale Anomalie des snow_storage (time, lat)
+    """
+    zonal_scenario = compute_zonal_mean_snow_storage(da, mask)
+    zonal_control = compute_zonal_mean_snow_storage(da_control, mask)
+
+    # Prozentuale Änderung, nur wo Control > 0
+    zonal_anomaly_pct = (
+        (zonal_scenario - zonal_control) / zonal_control.where(zonal_control > 1)
+    ) * 100
+
+    return zonal_anomaly_pct
+
+
+def plot_hovmoeller_snow_storage_anomaly(
+    *datasets, control=None, mask=None, savedir="./results/allgemeine_muster"
+):
+    """
+    Erstellt Hovmöller-Diagramme der prozentualen Anomalie des zonal
+    gemittelten snow_storage gegenüber dem Control-Szenario.
+    Verwendet eine asymmetrische Skala: -100% bis 0 linear,
+    0 bis +max logarithmisch-ähnlich via PowerNorm.
+
+    Parameter
+    ----------
+    *datasets : xarray.Dataset
+        Szenarien (ohne Control)
+    control : xarray.Dataset
+        Control-Szenario
+    mask : xarray.DataArray
+        Landanteil pro Zelle (0 bis 1)
+    savedir : str
+        Verzeichnis zum Speichern der Abbildung
+    """
+    import os
+    from matplotlib.colors import TwoSlopeNorm
+
+    os.makedirs(savedir, exist_ok=True)
+
+    n = len(datasets)
+
+    all_anomalies = []
+    for ds in datasets:
+        anomaly = compute_zonal_mean_snow_storage_anomaly(
+            ds.snow_storage, control.snow_storage, mask
+        )
+        all_anomalies.append(anomaly)
+
+    # Farbskala bei festen Grenzen kappen
+    vmin, vmax = -100, 500
+
+    norm = TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
+
+    fig, axes = plt.subplots(
+        n, 1, figsize=(14, 3 * n), sharex=True, sharey=True, constrained_layout=True
+    )
+
+    if n == 1:
+        axes = [axes]
+
+    for ax, ds, anomaly in zip(axes, datasets, all_anomalies):
+        time_vals = np.arange(len(ds.time))
+        lat_vals = ds.lat.values
+
+        # Werte kappen damit Extremwerte nicht die Darstellung stören
+        plot_data = anomaly.values.T.copy()
+        plot_data = np.clip(plot_data, vmin, vmax)
+
+        im = ax.pcolormesh(
+            time_vals,
+            lat_vals,
+            plot_data,
+            cmap="RdBu",
+            norm=norm,
+            shading="nearest",
+        )
+
+        ax.set_ylabel("Latitude [°]")
+        ax.set_title("Anomalie in Prozent", fontsize=11)
+
+        year_ticks = np.arange(0, len(ds.time), 12)
+        year_labels = [ds.time.values[i].year for i in year_ticks]
+        ax.set_xticks(year_ticks)
+        ax.set_xticklabels(year_labels)
+
+    axes[-1].set_xlabel("Year")
+
+    fig.colorbar(
+        im,
+        ax=axes,
+        label="Δ Snow storage [%]",
+        location="right",
+        shrink=0.6,
+        pad=0.015,
+        aspect=30,
+    )
+
+    fig.savefig(
+        "./results/intercomparison/hovmoeller/mean_snow_storage_anomaly_percent.png",
         dpi=300,
         bbox_inches="tight",
     )
@@ -396,7 +496,12 @@ def plot_global_snow_sum_per_month(*datasets, cell_area=None, mask=None, variabl
     ax.set_xlabel("Zeit")
     ax.legend()
     plt.tight_layout()
-    plt.show()
+    fig.savefig(
+        "./results/intercomparison/global_snow_sum_per_month.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
 
 
 def plot_global_snow_sum_per_year(*datasets, cell_area=None, mask=None, variable=None):
@@ -412,7 +517,12 @@ def plot_global_snow_sum_per_year(*datasets, cell_area=None, mask=None, variable
     ax.set_xlabel("Zeit")
     ax.legend()
     plt.tight_layout()
-    plt.show()
+    fig.savefig(
+        "./results/intercomparison/global_snow_sum_per_year.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
 
 
 def plot_global_snow_sum_anomaly_per_year(
@@ -432,7 +542,12 @@ def plot_global_snow_sum_anomaly_per_year(
     ax.set_xlabel("Zeit")
     ax.legend()
     plt.tight_layout()
-    plt.show()
+    fig.savefig(
+        "./results/intercomparison/global_snow_sum_anomaly_per_year.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
 
 
 def plot_global_snow_sum_anomaly_per_month(
@@ -450,7 +565,12 @@ def plot_global_snow_sum_anomaly_per_month(
     ax.set_xlabel("Zeit")
     ax.legend()
     plt.tight_layout()
-    plt.show()
+    fig.savefig(
+        "./results/intercomparison/global_snow_sum_anomaly_per_month.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
 
 
 def plot_global_snow_cover_monthly(*datasets, cell_area=None, mask=None):
@@ -467,7 +587,12 @@ def plot_global_snow_cover_monthly(*datasets, cell_area=None, mask=None):
     ax.set_xlabel("Zeit")
     ax.legend()
     plt.tight_layout()
-    plt.show()
+    fig.savefig(
+        "./results/intercomparison/global_snow_cover_per_month.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
 
 
 def plot_global_snow_cover_mean_per_year(*datasets, cell_area=None, mask=None):
@@ -486,7 +611,12 @@ def plot_global_snow_cover_mean_per_year(*datasets, cell_area=None, mask=None):
     ax.set_xlabel("Zeit")
     ax.legend()
     plt.tight_layout()
-    plt.show()
+    fig.savefig(
+        "./results/intercomparison/global_snow_cover_per_year.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
 
 
 def plot_global_snow_cover_anomaly_monthly(
@@ -507,7 +637,12 @@ def plot_global_snow_cover_anomaly_monthly(
     ax.set_xlabel("Zeit")
     ax.legend()
     plt.tight_layout()
-    plt.show()
+    fig.savefig(
+        "./results/intercomparison/global_snow_cover_anomaly_per_month.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
 
 
 def plot_global_snow_cover_anomaly_per_year(
@@ -536,7 +671,12 @@ def plot_global_snow_cover_anomaly_per_year(
     ax.set_xlabel("Zeit")
     ax.legend()
     plt.tight_layout()
-    plt.show()
+    fig.savefig(
+        "./results/intercomparison/global_snow_cover_anomaly_per_year.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
 
 
 def plot_global_snow_melt_per_month(
@@ -552,7 +692,12 @@ def plot_global_snow_melt_per_month(
     ax.set_xlabel("Zeit")
     ax.legend()
     plt.tight_layout()
-    plt.show()
+    fig.savefig(
+        "./results/intercomparison/global_snow_melt_per_month.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
 
 
 def plot_global_snow_melt_per_year(*datasets, cell_area=None, mask=None, variable=None):
@@ -568,7 +713,12 @@ def plot_global_snow_melt_per_year(*datasets, cell_area=None, mask=None, variabl
     ax.set_xlabel("Zeit")
     ax.legend()
     plt.tight_layout()
-    plt.show()
+    fig.savefig(
+        "./results/intercomparison/global_snow_melt_per_year.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
 
 
 def plot_global_snow_melt_anomaly_per_year(
@@ -588,34 +738,49 @@ def plot_global_snow_melt_anomaly_per_year(
     ax.set_xlabel("Zeit")
     ax.legend()
     plt.tight_layout()
-    plt.show()
+    fig.savefig(
+        "./results/intercomparison/global_snow_melt_anomaly_per_year.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
 
 
 if __name__ == "__main__":
 
-    ds_t5 = xr.open_dataset("./results/snow_57.nc")
-    ds_t4 = xr.open_dataset("./results/snow_47.nc")
-    ds_150 = xr.open_dataset("./results/snow_150.nc")
-    ds_ctrl = xr.open_dataset("./results/snow_control.nc")
+    ds_16 = xr.open_dataset("./results/16/snow_16.nc")
+    ds_47 = xr.open_dataset("./results/47/snow_47.nc")
+    ds_150 = xr.open_dataset("./results/150/snow_150.nc")
+    ds_ctrl = xr.open_dataset("./results/Control/snow_control.nc")
     mask = xr.open_dataarray("./data/interim/land_mask_neu.nc")
 
     cell_area = compute_cell_area(ds_ctrl.snow_storage)
 
-    for ds in [ds_t5, ds_t4, ds_150, ds_ctrl]:
+    for ds in [ds_16, ds_47, ds_150, ds_ctrl]:
         change_time(ds)
 
     plot_global_snow_sum_per_month(
-        ds_t5,
-        ds_t4,
+        ds_47,
+        ds_16,
         ds_150,
         ds_ctrl,
         cell_area=cell_area,
         mask=mask,
         variable="snow_storage",
     )
+    """plot_global_snow_sum_per_month(
+        ds_47.isel(time=slice(0, 7)),
+        ds_16.isel(time=slice(0, 7)),
+        ds_150.isel(time=slice(0, 7)),
+        ds_ctrl.isel(time=slice(0, 7)),
+        cell_area=cell_area,
+        mask=mask,
+        variable="snow_storage",
+    )"""
+
     plot_global_snow_sum_per_year(
-        ds_t5,
-        ds_t4,
+        ds_47,
+        ds_16,
         ds_150,
         ds_ctrl,
         cell_area=cell_area,
@@ -623,8 +788,8 @@ if __name__ == "__main__":
         variable="snow_storage",
     )
     plot_global_snow_sum_anomaly_per_month(
-        ds_t5,
-        ds_t4,
+        ds_47,
+        ds_16,
         ds_150,
         control=ds_ctrl,
         cell_area=cell_area,
@@ -632,8 +797,8 @@ if __name__ == "__main__":
         variable="snow_storage",
     )
     plot_global_snow_sum_anomaly_per_year(
-        ds_t5,
-        ds_t4,
+        ds_47,
+        ds_16,
         ds_150,
         control=ds_ctrl,
         cell_area=cell_area,
@@ -641,16 +806,16 @@ if __name__ == "__main__":
         variable="snow_storage",
     )
     plot_global_snow_cover_monthly(
-        ds_t5, ds_t4, ds_150, ds_ctrl, cell_area=cell_area, mask=mask
+        ds_47, ds_16, ds_150, ds_ctrl, cell_area=cell_area, mask=mask
     )
     plot_global_snow_cover_mean_per_year(
-        ds_t5, ds_t4, ds_150, ds_ctrl, cell_area=cell_area, mask=mask
+        ds_47, ds_16, ds_150, ds_ctrl, cell_area=cell_area, mask=mask
     )
     plot_global_snow_cover_anomaly_monthly(
-        ds_t5, ds_t4, ds_150, control=ds_ctrl, cell_area=cell_area, mask=mask
+        ds_47, ds_16, ds_150, control=ds_ctrl, cell_area=cell_area, mask=mask
     )
     plot_global_snow_cover_anomaly_per_year(
-        ds_t5, ds_t4, ds_150, control=ds_ctrl, cell_area=cell_area, mask=mask
+        ds_47, ds_16, ds_150, control=ds_ctrl, cell_area=cell_area, mask=mask
     )
 
     main_rivers = {
@@ -671,7 +836,10 @@ if __name__ == "__main__":
             7040047060,
         ],
     }
-    plot_hovmoeller_snow_cover_anomaly(ds_t5, ds_t4, ds_150, control=ds_ctrl, mask=mask)
+    plot_hovmoeller_snow_cover_anomaly(ds_47, ds_16, ds_150, control=ds_ctrl, mask=mask)
+    plot_hovmoeller_snow_storage_anomaly(
+        ds_47, ds_16, ds_150, control=ds_ctrl, mask=mask
+    )
 
     for river, (filepath, river_id) in main_rivers.items():
         # Select river from Data
@@ -681,8 +849,8 @@ if __name__ == "__main__":
         # Fraction of Raster Cells in River Basin
         river_mask = create_mask(ds_150, river_basin_diss)
         plot_global_snow_melt_per_month(
-            ds_t5,
-            ds_t4,
+            ds_47,
+            ds_16,
             ds_150,
             ds_ctrl,
             cell_area=cell_area,
@@ -690,8 +858,8 @@ if __name__ == "__main__":
             variable="snow_melt",
         )
         plot_global_snow_melt_per_year(
-            ds_t5,
-            ds_t4,
+            ds_47,
+            ds_16,
             ds_150,
             ds_ctrl,
             cell_area=cell_area,
@@ -699,8 +867,8 @@ if __name__ == "__main__":
             variable="snow_melt",
         )
         plot_global_snow_melt_anomaly_per_year(
-            ds_t5,
-            ds_t4,
+            ds_47,
+            ds_16,
             ds_150,
             control=ds_ctrl,
             cell_area=cell_area,
