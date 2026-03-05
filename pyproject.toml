@@ -19,6 +19,7 @@ dependencies = [
     "pyproj==3.7",
     "pytest>=9.0.2",
     "scikit-learn>=1.8.0",
+    "seaborn>=0.13.2",
     "shapely>=2.1.2",
     "tslearn>=0.7.0",
     "xarray==2024.1.0",

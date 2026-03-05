@@ -2,6 +2,10 @@ import xarray as xr
 import numpy as np
 from tslearn.clustering import TimeSeriesKMeans
 from tslearn.preprocessing import TimeSeriesScalerMinMax
+from datetime import datetime
+import os
+import pickle
+import pandas as pd
 
 
 def prepare_time_series(da: xr.DataArray) -> np.ndarray:
@@ -77,3 +81,105 @@ def convert_labels_to_xarray(labels: np.ndarray, da: xr.DataArray) -> xr.DataArr
     landmask = ~np.isnan(da.isel(time=0))
     cluster_array.values[landmask.values] = labels
     return cluster_array
+
+
+def elbow_method(timeseries, max_clusters):
+    """
+    Finds the optimal number of clusters using the elbow method
+    https://predictivehacks.com/k-means-elbow-method-code-for-python/
+    Arguments:
+        data: pandas.DataFrame
+        max_clusters: int - the maximum number of clusters to try (inclusive)
+    Returns:
+        inertias_df: DataFrame with inertias for each k
+    """
+
+    # Path to Checkpoint File
+    checkpoint_path = os.path.join(
+        "results",
+        "clustering",
+        "snow_storage",
+        "elbow_method",
+        "min_max_richtig_only_snow_cells",
+        "inertias.csv",
+    )
+
+    # Create directory
+    cluster_results_dir = os.path.join(
+        "results",
+        "clustering",
+        "snow_storage",
+        "elbow_method",
+        "min_max_richtig_only_snow_cells",
+    )
+    os.makedirs(cluster_results_dir, exist_ok=True)
+
+    # Lade bestehende Ergebnisse falls vorhanden
+    if os.path.exists(checkpoint_path):
+        print(f"Lade bestehende Ergebnisse aus {checkpoint_path}")
+        inertias_df = pd.read_csv(checkpoint_path, sep=";", index_col=0)
+        inertias = inertias_df.to_dict()[inertias_df.columns[0]]
+        # Konvertiere Keys zu int
+        inertias = {int(k): v for k, v in inertias.items()}
+        print(f"Bereits berechnet: k = {sorted(inertias.keys())}")
+    else:
+        inertias = {}
+
+    # Find the optimal number of clusters
+    for i in range(2, max_clusters + 1):  # +1 damit max_clusters inklusiv ist!
+        if i in inertias:
+            print(f"k={i} bereits berechnet, überspringe...")
+            continue
+
+        print(f"\n{'='*60}")
+        begin = datetime.now()
+        print(f"{begin.strftime('%H:%M:%S')} - Trying {i} clusters")
+        print(f"{'='*60}")
+
+        labels, km = time_series_analysis(timeseries, i)
+        inertias[i] = km.inertia_
+        print(f"✓ k={i} fertig! Inertia: {km.inertia_:.2f}")
+
+        # Speichere Labels und Modell
+        labels_path = os.path.join(cluster_results_dir, f"{i}_cluster_labels.npy")
+        model_path = os.path.join(cluster_results_dir, f"kmeans_model_{i}.pkl")
+
+        np.save(labels_path, labels)  # Labels als NumPy-Array
+        print(f"→ Labels gespeichert: {labels_path}")
+
+        with open(model_path, "wb") as f:
+            pickle.dump(km, f)  # Modell mit pickle
+        print(f"→ Modell gespeichert: {model_path}")
+
+        # Speichere Inertias nach jedem k
+        inertias_df = pd.DataFrame.from_dict(
+            inertias, orient="index", columns=["inertia"]
+        )
+        print("schreibe CSV")
+        inertias_df.index.name = "k"
+        inertias_df.to_csv(checkpoint_path, sep=";")
+        print(f"→ Inertias gespeichert: {checkpoint_path}\n")
+        print(f"fertig um {datetime.now().strftime('%H:%M:%S')}")
+
+    print(f"\n{'='*60}")
+    print("Alle Cluster fertig berechnet!")
+    print(f"{'='*60}")
+
+    return inertias_df
+
+
+if __name__ == "__main__":
+    ds_150 = xr.open_dataset("./data/150/snow_150.nc")
+    ds_control = xr.open_dataset("./data/control/snow_control.nc")
+
+    da = ds_150.snow_storage - ds_control.snow_storage
+    timeseries = prepare_time_series(da)
+    scaler = TimeSeriesScalerMinMax()
+    timeseries_scaled = scaler.fit_transform(timeseries)
+
+    # Subset for Elbow Method
+    subset_size = int(0.2 * 5661)  # ca. 1248 Reihen
+    indices = np.random.choice(5661, subset_size, replace=False)
+    timeseries_subset = timeseries_scaled[indices]
+
+    result_inertias = elbow_method(timeseries_subset, 10)
