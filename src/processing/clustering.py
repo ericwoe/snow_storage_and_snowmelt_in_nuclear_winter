@@ -59,7 +59,7 @@ def time_series_analysis(timeseries_object: np.ndarray, n_clusters):
     # Perform time series k-means clustering
     km = TimeSeriesKMeans(
         n_clusters=n_clusters,
-        metric="dtw",
+        metric="euclidean",
         n_jobs=-1,  # use all cpu cores
         max_iter=50,
         random_state=42,
@@ -100,7 +100,7 @@ def elbow_method(timeseries, max_clusters):
         "clustering",
         "snow_storage",
         "elbow_method",
-        "min_max_richtig_only_snow_cells",
+        "150_Tg_euclidean",
         "inertias.csv",
     )
 
@@ -110,7 +110,7 @@ def elbow_method(timeseries, max_clusters):
         "clustering",
         "snow_storage",
         "elbow_method",
-        "min_max_richtig_only_snow_cells",
+        "150_Tg_euclidean",
     )
     os.makedirs(cluster_results_dir, exist_ok=True)
 
@@ -169,17 +169,15 @@ def elbow_method(timeseries, max_clusters):
 
 
 if __name__ == "__main__":
-    ds_150 = xr.open_dataset("./data/150/snow_150.nc")
-    ds_control = xr.open_dataset("./data/control/snow_control.nc")
+    ds_150 = xr.open_dataset("./results/150/snow_150.nc")
+    ds_control = xr.open_dataset("./results/Control/snow_control.nc")
 
-    da = ds_150.snow_storage - ds_control.snow_storage
+    da = ds_control.snow_storage
     timeseries = prepare_time_series(da)
-    scaler = TimeSeriesScalerMinMax()
-    timeseries_scaled = scaler.fit_transform(timeseries)
 
     # Subset for Elbow Method
-    subset_size = int(0.2 * 5661)  # ca. 1248 Reihen
-    indices = np.random.choice(5661, subset_size, replace=False)
-    timeseries_subset = timeseries_scaled[indices]
+    # subset_size = int(0.2 * 5661)  # ca. 1248 Reihen
+    # indices = np.random.choice(5661, subset_size, replace=False)
+    # timeseries_subset = timeseries_scaled[indices]
 
-    result_inertias = elbow_method(timeseries_subset, 10)
+    result_inertias = elbow_method(timeseries, 10)
