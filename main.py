@@ -1,8 +1,9 @@
 from src.preprocessing import prepare_data
-from src.preprocessing.land_mask import create_land_mask
+from src.preprocessing.land_mask import create_mask
 from src.processing.snow_model import add_snow_variables
 import xarray as xr
 from pathlib import Path
+import geopandas as gpd
 
 
 SCENARIOS = {
@@ -63,7 +64,8 @@ for name, ds in datasets.items():
         mask = xr.open_dataarray(land_mask_path)
     else:
         print("Creating land mask")
-        mask = create_land_mask(ds, gadm_path=GADM_FILE_PATH)
+        gadm = gpd.read_file(GADM_FILE_PATH)
+        mask = create_mask(ds, gadm)
         print(f"Saving Mask to {LAND_MASK_OUTPUT_PATH}")
         # Ensure directory exists
         land_mask_path.parent.mkdir(parents=True, exist_ok=True)
@@ -84,5 +86,3 @@ for name, ds in datasets.items():
     # Ensure directory exists
     result_path.parent.mkdir(parents=True, exist_ok=True)
     ds.to_netcdf(result_path)
-
-    ds
