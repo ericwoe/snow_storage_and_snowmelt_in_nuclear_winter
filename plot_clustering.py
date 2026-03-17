@@ -295,7 +295,8 @@ def plot_cluster_combined(
     map_ax.add_feature(cfeature.BORDERS, linewidth=0.3, zorder=11)
     map_ax.add_feature(cfeature.OCEAN, color="lightgrey", zorder=10)
     map_ax.set_title(
-        title if title else f"Snow Storage Clusters - {scenario}", fontsize=18
+        title if title else f"Snow Storage Clusters - {scenario} - {property}",
+        fontsize=18,
     )
 
     # ── Zeitreihen (dynamisch darunter) ───────────────────────────────────────

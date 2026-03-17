@@ -2,9 +2,11 @@ import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
 import cftime
-from basin_analysis import create_mask
+from src.preprocessing.land_mask import create_mask
 import geopandas as gpd
 import os
+from matplotlib.colors import TwoSlopeNorm, SymLogNorm
+import matplotlib.colors as mcolors
 
 
 def change_time(ds):
@@ -58,7 +60,34 @@ def compute_cell_area(da):
     return cell_area
 
 
-def sum_per_month(da, cell_area, mask):
+def sum_per_month(
+    da: xr.DataArray, cell_area: xr.DataArray, mask: xr.DataArray
+) -> xr.DataArray:
+    """
+    Computes the total global snow volume per month.
+
+    Converts snow depth from millimeters to meters, multiplies by grid cell area
+    and a land mask to obtain the snow volume per cell, then sums spatially over
+    all grid cells.
+
+    Parameters
+    ----------
+    da : xr.DataArray
+        Snow depth in millimeters, with dimensions (time, lat, lon).
+    cell_area : xr.DataArray
+        Area of each grid cell in square meters, with dimensions (lat, lon).
+    mask : xr.DataArray
+        Binary land mask (1 = land, 0 = ocean/exclude), with dimensions (lat, lon).
+
+    Returns
+    -------
+    xr.DataArray
+        Total snow volume in cubic meters per month, with dimension (time,).
+
+    Example
+    -------
+    >>> snow_volume = sum_per_month(ds.snow_depth, cell_area, land_mask)
+    """
     da_m = da / 1000
     volume = da_m * cell_area * mask
     volume_sum_per_month = volume.sum(dim=("lat", "lon"))
@@ -93,30 +122,21 @@ def compute_zonal_snow_cover(da, mask):
     """
     Berechnet den Anteil der schneebedeckten Landfläche pro Breitengrad und Zeitschritt,
     gewichtet mit dem Landanteil (mask).
-
     Parameter
     ----------
     da : xarray.DataArray
         snow_storage mit Dimensionen (time, lat, lon)
     mask : xarray.DataArray
         Landanteil pro Zelle (0 bis 1), Dimensionen (lat, lon)
-
     Returns
     -------
     zonal_snow_cover : xarray.DataArray
         Anteil der schneebedeckten Landfläche in % (time, lat)
     """
     snow = (da > 0).astype(float)
-
-    # Zähler: Summe der schneebedeckten Landanteile pro Breitengrad
     snow_land = (snow * mask).sum(dim="lon")
-
-    # Nenner: Gesamter Landanteil pro Breitengrad
     total_land = mask.sum(dim="lon")
-
-    # Division, wo Land vorhanden ist
     zonal_snow_cover = (snow_land / total_land.where(total_land > 0)) * 100
-
     return zonal_snow_cover
 
 
@@ -124,7 +144,6 @@ def compute_zonal_snow_cover_anomaly(da, da_control, mask):
     """
     Berechnet die Anomalie der zonalen Schneebedeckung
     gegenüber dem Control-Szenario.
-
     Parameter
     ----------
     da : xarray.DataArray
@@ -133,7 +152,6 @@ def compute_zonal_snow_cover_anomaly(da, da_control, mask):
         snow_storage des Control-Szenarios (time, lat, lon)
     mask : xarray.DataArray
         Landanteil pro Zelle (0 bis 1), Dimensionen (lat, lon)
-
     Returns
     -------
     zonal_anomaly : xarray.DataArray
@@ -144,11 +162,9 @@ def compute_zonal_snow_cover_anomaly(da, da_control, mask):
     return zonal_scenario - zonal_control
 
 
-def plot_hovmoeller_snow_cover_anomaly(*datasets, control=None, mask=None):
-    from matplotlib.colors import TwoSlopeNorm
+def plot_hovmoeller_snow_cover_anomaly(*datasets, control=None, mask=None, titles=None):
 
     n = len(datasets)
-
     all_anomalies = []
     for ds in datasets:
         anomaly = compute_zonal_snow_cover_anomaly(
@@ -159,20 +175,17 @@ def plot_hovmoeller_snow_cover_anomaly(*datasets, control=None, mask=None):
     all_values = np.concatenate([a.values.flatten() for a in all_anomalies])
     all_values = all_values[~np.isnan(all_values)]
     vabs = np.percentile(np.abs(all_values), 99)
-
     norm = TwoSlopeNorm(vmin=-vabs, vcenter=0, vmax=vabs)
 
     fig, axes = plt.subplots(
         n, 1, figsize=(14, 3 * n), sharex=True, sharey=True, constrained_layout=True
     )
-
     if n == 1:
         axes = [axes]
 
-    for ax, ds, anomaly in zip(axes, datasets, all_anomalies):
+    for i, (ax, ds, anomaly) in enumerate(zip(axes, datasets, all_anomalies)):
         time_vals = np.arange(len(ds.time))
         lat_vals = ds.lat.values
-
         im = ax.pcolormesh(
             time_vals,
             lat_vals,
@@ -181,9 +194,11 @@ def plot_hovmoeller_snow_cover_anomaly(*datasets, control=None, mask=None):
             norm=norm,
             shading="nearest",
         )
-
         ax.set_ylabel("Latitude [°]")
-        ax.set_title("Anomaly of zonal snow cover", fontsize=11)
+
+        # Dynamischer Titel
+        label = titles[i] if titles and i < len(titles) else f"Scenario {i+1}"
+        ax.set_title(f"Anomaly of zonal snow cover – {label}", fontsize=11)
 
         year_ticks = np.arange(0, len(ds.time), 12)
         year_labels = [ds.time.values[i].year for i in year_ticks]
@@ -191,7 +206,6 @@ def plot_hovmoeller_snow_cover_anomaly(*datasets, control=None, mask=None):
         ax.set_xticklabels(year_labels)
 
     axes[-1].set_xlabel("Year")
-
     fig.colorbar(
         im,
         ax=axes,
@@ -364,7 +378,7 @@ def plot_hovmoeller_mean_snow_storage(
     plt.close(fig)
 
 
-def compute_zonal_mean_snow_storage_anomaly(da, da_control, mask):
+def compute_zonal_snow_storage_mean_anomaly_absolute(da, da_control, mask):
     """
     Berechnet die prozentuale Anomalie des zonal gemittelten snow_storage
     gegenüber dem Control-Szenario.
@@ -387,21 +401,18 @@ def compute_zonal_mean_snow_storage_anomaly(da, da_control, mask):
     zonal_control = compute_zonal_mean_snow_storage(da_control, mask)
 
     # Prozentuale Änderung, nur wo Control > 0
-    zonal_anomaly_pct = (
-        (zonal_scenario - zonal_control) / zonal_control.where(zonal_control > 1)
-    ) * 100
+    zonal_anomaly_absolute = zonal_scenario - zonal_control
 
-    return zonal_anomaly_pct
+    return zonal_anomaly_absolute
 
 
 def plot_hovmoeller_snow_storage_anomaly(
-    *datasets, control=None, mask=None, savedir="./results/allgemeine_muster"
+    *datasets, control=None, mask=None, titles=None
 ):
     """
     Erstellt Hovmöller-Diagramme der prozentualen Anomalie des zonal
     gemittelten snow_storage gegenüber dem Control-Szenario.
-    Verwendet eine asymmetrische Skala: -100% bis 0 linear,
-    0 bis +max logarithmisch-ähnlich via PowerNorm.
+    Verwendet eine klassenbasierte Farbskala via BoundaryNorm.
 
     Parameter
     ----------
@@ -411,27 +422,47 @@ def plot_hovmoeller_snow_storage_anomaly(
         Control-Szenario
     mask : xarray.DataArray
         Landanteil pro Zelle (0 bis 1)
-    savedir : str
-        Verzeichnis zum Speichern der Abbildung
     """
-    import os
-    from matplotlib.colors import TwoSlopeNorm
-
-    os.makedirs(savedir, exist_ok=True)
 
     n = len(datasets)
-
+    vmin = 0
+    vmax = 0
     all_anomalies = []
+
     for ds in datasets:
-        anomaly = compute_zonal_mean_snow_storage_anomaly(
+        anomaly = compute_zonal_snow_storage_mean_anomaly_absolute(
             ds.snow_storage, control.snow_storage, mask
         )
         all_anomalies.append(anomaly)
+        vmin = min(vmin, anomaly.min().item())
+        vmax = max(vmax, anomaly.max().item())
 
-    # Farbskala bei festen Grenzen kappen
-    vmin, vmax = -100, 500
+    print(vmin, vmax)
 
-    norm = TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
+    bin_edges = np.array(
+        [
+            vmin,
+            -4000,
+            -2000,
+            -1000,
+            -500,
+            -100,
+            -50,
+            -10,
+            10,
+            50,
+            100,
+            500,
+            1000,
+            2000,
+            3000,
+            vmax,
+        ]
+    )
+
+    n_classes = len(bin_edges) - 1
+    norm = mcolors.BoundaryNorm(bin_edges, ncolors=n_classes)
+    cmap = plt.get_cmap("RdBu", n_classes)
 
     fig, axes = plt.subplots(
         n, 1, figsize=(14, 3 * n), sharex=True, sharey=True, constrained_layout=True
@@ -440,13 +471,151 @@ def plot_hovmoeller_snow_storage_anomaly(
     if n == 1:
         axes = [axes]
 
-    for ax, ds, anomaly in zip(axes, datasets, all_anomalies):
+    for i, (ax, ds, anomaly) in enumerate(zip(axes, datasets, all_anomalies)):
         time_vals = np.arange(len(ds.time))
         lat_vals = ds.lat.values
 
-        # Werte kappen damit Extremwerte nicht die Darstellung stören
         plot_data = anomaly.values.T.copy()
-        plot_data = np.clip(plot_data, vmin, vmax)
+        plot_data = np.nan_to_num(anomaly.values.T, nan=0.0)
+
+        im = ax.pcolormesh(
+            time_vals,
+            lat_vals,
+            plot_data,
+            cmap=cmap,
+            norm=norm,
+            shading="nearest",
+        )
+
+        ax.set_ylabel("Latitude [°]")
+        label = titles[i] if titles and i < len(titles) else f"Scenario {i+1}"
+        ax.set_title(f"Anomaly of zonal mean snow storage – {label}", fontsize=11)
+
+        year_ticks = np.arange(0, len(ds.time), 12)
+        year_labels = [ds.time.values[j].year for j in year_ticks]
+        ax.set_xticks(year_ticks)
+        ax.set_xticklabels(year_labels)
+
+    axes[-1].set_xlabel("Year")
+
+    cbar = fig.colorbar(
+        im,
+        ax=axes,
+        label="Δ Snow storage [mm]",
+        location="right",
+        shrink=0.6,
+        pad=0.015,
+        aspect=30,
+        ticks=bin_edges,
+    )
+    cbar.ax.set_yticklabels([f"{v:g}" for v in bin_edges])
+
+    fig.savefig(
+        "./results/intercomparison/hovmoeller/mean_snow_storage_anomaly_absolute.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
+
+def compute_zonal_snow_storage_sum(da, mask, cell_area):
+    """
+    Berechnet den zonal gemittelten snow_storage pro Breitengrad und Zeitschritt,
+    gewichtet mit dem Landanteil (mask).
+
+    Parameter
+    ----------
+    da : xarray.DataArray
+        snow_storage mit Dimensionen (time, lat, lon)
+    mask : xarray.DataArray
+        Landanteil pro Zelle (0 bis 1), Dimensionen (lat, lon)
+
+    Returns
+    -------
+    zonal_mean : xarray.DataArray
+        Zonal gemittelter snow_storage (time, lat)
+    """
+    weighted_sum = (da * mask * cell_area).sum(dim="lon")
+    return weighted_sum
+
+
+def compute_zonal_snow_storage_sum_anomaly_absolute(da, da_control, mask, cell_area):
+    """
+    Berechnet die prozentuale Anomalie des zonal gemittelten snow_storage
+    gegenüber dem Control-Szenario.
+
+    Parameter
+    ----------
+    da : xarray.DataArray
+        snow_storage des Szenarios (time, lat, lon)
+    da_control : xarray.DataArray
+        snow_storage des Control-Szenarios (time, lat, lon)
+
+    Returns
+    -------
+    zonal_anomaly_pct : xarray.DataArray
+        Prozentuale zonale Anomalie des snow_storage (time, lat)
+    """
+    zonal_scenario = compute_zonal_snow_storage_sum(da, mask, cell_area)
+    zonal_control = compute_zonal_snow_storage_sum(da_control, mask, cell_area)
+
+    # Prozentuale Änderung, nur wo Control > 0
+    zonal_anomaly_pct = zonal_scenario - zonal_control
+
+    return zonal_anomaly_pct
+
+
+def plot_hovmoeller_snow_storage_sum_anomaly_absolute(
+    *datasets, control=None, mask=None, cell_area=None, titles=None
+):
+    """
+    Erstellt Hovmöller-Diagramme der absoluten Anomalie der zonalen
+    Schneespeicher-Summe gegenüber dem Control-Szenario.
+    Verwendet eine symmetrische SymLogNorm-Skala mit Weiß bei 0.
+
+    Parameter
+    ----------
+    *datasets : xarray.Dataset
+        Szenarien (ohne Control)
+    control : xarray.Dataset
+        Control-Szenario
+    mask : xarray.DataArray
+        Landanteil pro Zelle (0 bis 1)
+    cell_area : xarray.DataArray
+        Fläche einer Zelle in m²
+    titles : list of str, optional
+        Titel für die einzelnen Subplots
+    """
+
+    n = len(datasets)
+    all_anomalies = []
+    vmin, vmax = 0, 0
+
+    for ds in datasets:
+        anomaly = compute_zonal_snow_storage_sum_anomaly_absolute(
+            ds.snow_storage, control.snow_storage, mask, cell_area
+        )
+        all_anomalies.append(anomaly)
+        vmin = min(vmin, anomaly.min().item())
+        vmax = max(vmax, anomaly.max().item())
+    # Symmetrische Skala damit 0 = weiß
+    vabs = max(abs(vmin), abs(vmax))
+
+    # linthresh: linearer Bereich um 0, ca. 0.1% von vabs
+    norm = SymLogNorm(linthresh=1, vmin=-vabs, vmax=vabs)
+
+    fig, axes = plt.subplots(
+        n, 1, figsize=(14, 3 * n), sharex=True, sharey=True, constrained_layout=True
+    )
+    if n == 1:
+        axes = [axes]
+
+    for i, (ax, ds, anomaly) in enumerate(zip(axes, datasets, all_anomalies)):
+        time_vals = np.arange(len(ds.time))
+        lat_vals = ds.lat.values
+
+        # NaN durch 0 ersetzen damit pcolormesh nichts ausblendet
+        plot_data = np.nan_to_num(anomaly.values.T, nan=0.0)
 
         im = ax.pcolormesh(
             time_vals,
@@ -456,29 +625,28 @@ def plot_hovmoeller_snow_storage_anomaly(
             norm=norm,
             shading="nearest",
         )
-
         ax.set_ylabel("Latitude [°]")
-        ax.set_title("Anomalie in Prozent", fontsize=11)
-
+        label = titles[i] if titles and i < len(titles) else f"Scenario {i+1}"
+        ax.set_title(
+            f"Absolute Anomaly of zonal snow storage sum – {label}", fontsize=11
+        )
         year_ticks = np.arange(0, len(ds.time), 12)
-        year_labels = [ds.time.values[i].year for i in year_ticks]
+        year_labels = [ds.time.values[j].year for j in year_ticks]
         ax.set_xticks(year_ticks)
         ax.set_xticklabels(year_labels)
 
     axes[-1].set_xlabel("Year")
-
     fig.colorbar(
         im,
         ax=axes,
-        label="Δ Snow storage [%]",
+        label="Δ Snow storage [m³]",
         location="right",
         shrink=0.6,
         pad=0.015,
         aspect=30,
     )
-
     fig.savefig(
-        "./results/intercomparison/hovmoeller/mean_snow_storage_anomaly_percent.png",
+        "./results/intercomparison/hovmoeller/mean_snow_storage_sum_anomaly_absolute.png",
         dpi=300,
         bbox_inches="tight",
     )
@@ -492,7 +660,8 @@ def plot_global_snow_sum_per_month(*datasets, cell_area=None, mask=None, variabl
     for i, ds in enumerate(datasets):
         snow_sum_monthly = sum_per_month(ds[variable], cell_area=cell_area, mask=mask)
         snow_sum_monthly.plot(ax=ax, label=ds.case)
-
+    ax.set_title("Global Snow Storage Sum per Month", fontsize=11)
+    ax.set_ylabel("Snow Storage Volume [m³]")
     ax.set_xlabel("Zeit")
     ax.legend()
     plt.tight_layout()
@@ -555,18 +724,123 @@ def plot_global_snow_sum_anomaly_per_month(
 ):
 
     fig, ax = plt.subplots(figsize=(8, 5))
-
+    print("Summe Anomalien")
     for i, ds in enumerate(datasets):
-        monthly_snow_sum_anomaly = sum_per_month(
-            ds[variable] - control[variable], cell_area=cell_area, mask=mask
+        monthly_snow_sum_ds = sum_per_month(
+            ds[variable], cell_area=cell_area, mask=mask
         )
-        monthly_snow_sum_anomaly.plot(ax=ax, label=ds.case)
+        monthly_snow_sum_control = sum_per_month(
+            control[variable], cell_area=cell_area, mask=mask
+        )
+        anomaly = monthly_snow_sum_ds - monthly_snow_sum_control
+        anomaly.plot(ax=ax, label=ds.case)
 
     ax.set_xlabel("Zeit")
+    ax.set_ylabel("Snow Volume [m³]")
+    ax.set_title("Monthly Anomaly of Global Snow Sum Relative to Control", fontsize=11)
     ax.legend()
     plt.tight_layout()
     fig.savefig(
         "./results/intercomparison/global_snow_sum_anomaly_per_month.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
+
+def plot_absolute_global_snow_sum_anomaly_per_month(
+    *datasets, control=None, cell_area=None, mask=None, variable=None
+):
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    print("Summe absoluter Betrag Anomalien")
+    for i, ds in enumerate(datasets):
+        monthly_snow_sum_anomaly = sum_per_month(
+            np.abs(ds[variable] - control[variable]), cell_area=cell_area, mask=mask
+        )
+        monthly_snow_sum_anomaly.plot(ax=ax, label=ds.case)
+        print(
+            f'{ds.case} Zeitpunkt d. Maximums: {monthly_snow_sum_anomaly.idxmax(dim="time")}'
+        )
+
+    ax.set_xlabel("Zeit")
+    ax.set_ylabel("Snow Volume [m³]")
+    ax.set_title(
+        "Betrag von Monthly Anomaly of Global Snow Sum Relative to Control", fontsize=11
+    )
+    ax.legend()
+    plt.tight_layout()
+    fig.savefig(
+        "./results/intercomparison/global_snow_sum_anomaly_per_month_absolute.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
+
+def plot_global_snow_sum_only_positive_anomaly_per_month(
+    *datasets, control=None, cell_area=None, mask=None, variable=None
+):
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    print("Summe nur positiver Anomalien")
+    for i, ds in enumerate(datasets):
+        anomaly = ds[variable] - control[variable]
+        monthly_snow_sum_anomaly = sum_per_month(
+            anomaly.where(anomaly > 0), cell_area=cell_area, mask=mask
+        )
+        monthly_snow_sum_anomaly.plot(ax=ax, label=ds.case)
+        print(
+            f'{ds.case} Zeitpunkt d. Maximums: {monthly_snow_sum_anomaly.idxmax(dim="time")}'
+        )
+
+    ax.set_xlabel("Zeit")
+    ax.set_ylabel("Snow Volume [m³]")
+    ax.set_title("Summe der positivenAnomalien ", fontsize=11)
+    ax.legend()
+    plt.tight_layout()
+    fig.savefig(
+        "./results/intercomparison/global_snow_sum_anomaly_only_positive.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
+
+def plot_global_snow_sum_anomaly_per_month_percent(
+    *datasets, control=None, cell_area=None, mask=None, variable=None
+):
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    # Globale Summe für Control berechnen (1D: nur time)
+
+    for i, ds in enumerate(datasets):
+        # Globale Summe für das jeweilige Dataset berechnen (1D: nur time)
+        monthly_snow_sum_scenario = sum_per_month(
+            ds[variable], cell_area=cell_area, mask=mask
+        )
+        print(monthly_snow_sum_scenario, len(monthly_snow_sum_scenario))
+        monthly_snow_sum_control = sum_per_month(
+            control[variable], cell_area=cell_area, mask=mask
+        )
+        print(monthly_snow_sum_control, len(monthly_snow_sum_control))
+
+        monthly_anomaly_percent = (
+            (monthly_snow_sum_scenario - monthly_snow_sum_control)
+            / monthly_snow_sum_control
+            * 100
+        )
+
+        monthly_anomaly_percent.plot(ax=ax, label=ds.case)
+
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Snow Volume Anomaly [%]")
+    ax.set_title("Monthly Anomaly of Global Snow Sum Relative to Control", fontsize=11)
+    ax.legend()
+    ax.axhline(0, color="black", linewidth=0.8, linestyle="--")  # Nulllinie
+    plt.tight_layout()
+    fig.savefig(
+        "./results/intercomparison/global_snow_sum_anomaly_per_month_percent.png",
         dpi=300,
         bbox_inches="tight",
     )
@@ -796,6 +1070,26 @@ if __name__ == "__main__":
         mask=mask,
         variable="snow_storage",
     )
+    plot_global_snow_sum_only_positive_anomaly_per_month(
+        ds_47,
+        ds_16,
+        ds_150,
+        control=ds_ctrl,
+        cell_area=cell_area,
+        mask=mask,
+        variable="snow_storage",
+    )
+
+    plot_absolute_global_snow_sum_anomaly_per_month(
+        ds_47,
+        ds_16,
+        ds_150,
+        control=ds_ctrl,
+        cell_area=cell_area,
+        mask=mask,
+        variable="snow_storage",
+    )
+
     plot_global_snow_sum_anomaly_per_year(
         ds_47,
         ds_16,
@@ -836,9 +1130,42 @@ if __name__ == "__main__":
             7040047060,
         ],
     }
-    plot_hovmoeller_snow_cover_anomaly(ds_47, ds_16, ds_150, control=ds_ctrl, mask=mask)
+    plot_hovmoeller_snow_cover_anomaly(
+        ds_16,
+        ds_47,
+        ds_150,
+        control=ds_ctrl,
+        mask=mask,
+        titles=[
+            "16 Tg",
+            "47 Tg",
+            "150 Tg",
+        ],
+    )
     plot_hovmoeller_snow_storage_anomaly(
-        ds_47, ds_16, ds_150, control=ds_ctrl, mask=mask
+        ds_16,
+        ds_47,
+        ds_150,
+        control=ds_ctrl,
+        mask=mask,
+        titles=[
+            "16 Tg",
+            "47 Tg",
+            "150 Tg",
+        ],
+    )
+    plot_hovmoeller_snow_storage_sum_anomaly_absolute(
+        ds_16,
+        ds_47,
+        ds_150,
+        control=ds_ctrl,
+        mask=mask,
+        cell_area=cell_area,
+        titles=[
+            "16 Tg",
+            "47 Tg",
+            "150 Tg",
+        ],
     )
 
     for river, (filepath, river_id) in main_rivers.items():
