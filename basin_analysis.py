@@ -5,6 +5,10 @@ import cftime
 import matplotlib.pyplot as plt
 from src.preprocessing.land_mask import create_mask
 
+plt.style.use(
+    "https://raw.githubusercontent.com/allfed/ALLFED-matplotlib-style-sheet/main/ALLFED.mplstyle"
+)
+
 # noch die Plots für Abfluss des Einzugsgebiets ergänzen
 
 
@@ -55,7 +59,7 @@ def plot_monthly_discharge(da_ts_150, da_ts_ctrl, years=0):
     fig, ax = plt.subplots(figsize=(8, 5))
 
     # Beide Zeitreihen in dieselbe Achse plotten
-    ts_150_plot.plot(ax=ax, label="150 Tg Szenario")
+    ts_150_plot.plot(ax=ax, label="47 Tg Szenario")
     ts_ctrl_plot.plot(ax=ax, label="Control Szenario")
 
     # Achsenbeschriftung
@@ -69,6 +73,11 @@ def plot_monthly_discharge(da_ts_150, da_ts_ctrl, years=0):
     # Layout verbessern
     plt.tight_layout()
     plt.show()
+
+
+def months_between(dt1, dt2):
+    """Berechnet die Anzahl der Monate zwischen zwei cftime-Objekten."""
+    return (dt1.year - dt2.year) * 12 + (dt1.month - dt2.month)
 
 
 def plot_monthly_discharge_args(*dataarrays, labels=None, years=None):
@@ -85,23 +94,33 @@ def plot_monthly_discharge_args(*dataarrays, labels=None, years=None):
         Anzahl der Jahre ab Jahr 5. Bei 0 werden alle Daten geplottet.
     """
     if labels is None:
-        labels = [f"Serie {i+1}" for i in range(len(dataarrays))]
+        labels = ["Serie " + str(i + 1) for i in range(len(dataarrays))]
     elif len(labels) != len(dataarrays):
         raise ValueError(
-            f"Anzahl der Labels ({len(labels)}) muss mit Anzahl der DataArrays ({len(dataarrays)}) übereinstimmen."
+            "Anzahl der Labels ("
+            + str(len(labels))
+            + ") muss mit Anzahl der DataArrays ("
+            + str(len(dataarrays))
+            + ") übereinstimmen."
         )
+
+    # Referenzzeitpunkt: Beginn der Simulation
+    sim_start = cftime.DatetimeNoLeap(5, 2, 1, 0, 0, 0, 0, has_year_zero=True)
 
     # Zeitscheibe auswählen, falls years angegeben
     if years:
-        time_slice = slice(
-            cftime.DatetimeNoLeap(5 + years[0], 2, 1, 0, 0, 0, 0, has_year_zero=True),
-            cftime.DatetimeNoLeap(5 + years[1], 2, 1, 0, 0, 0, 0, has_year_zero=True),
+        start = cftime.DatetimeNoLeap(
+            5 + years[0], 2, 1, 0, 0, 0, 0, has_year_zero=True
         )
+        end = cftime.DatetimeNoLeap(5 + years[1], 2, 1, 0, 0, 0, 0, has_year_zero=True)
+        time_slice = slice(start, end)
         arrays_to_plot = [da.sel(time=time_slice) for da in dataarrays]
-        year_label = years[1] - years[0]
+        year_label = str(years[1] - years[0])
+        month_offset = months_between(start, sim_start)
     else:
         arrays_to_plot = list(dataarrays)
         year_label = "All"
+        month_offset = 0
 
     # Figur und Achse erzeugen
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -109,6 +128,14 @@ def plot_monthly_discharge_args(*dataarrays, labels=None, years=None):
     # Alle Zeitreihen plotten
     for da, label in zip(arrays_to_plot, labels):
         da.plot(ax=ax, label=label)
+
+    # Ticks in 12er-Schritten mit dynamischem Offset
+    n_months = len(arrays_to_plot[0].time)
+    tick_positions = list(range(1, n_months, 12))
+    tick_labels = [str(month_offset + i) for i in tick_positions]
+    ax.set_xticks([arrays_to_plot[0].time.values[i] for i in tick_positions])
+    ax.set_xticklabels(tick_labels, rotation=45, ha="right")
+    ax.tick_params(axis="x", which="minor", bottom=False)
 
     # Achsenbeschriftung
     ax.set_title(f"{river} - {year_label} Years")
@@ -118,6 +145,7 @@ def plot_monthly_discharge_args(*dataarrays, labels=None, years=None):
     ax.legend()
     plt.tight_layout()
     plt.show()
+    print(arrays_to_plot)
 
 
 def annual_sum(da):
@@ -261,42 +289,34 @@ if __name__ == "__main__":
         dsc_sum_16 = monthly_discharge_sum(dsc_16)
         dsc_sum_control = monthly_discharge_sum(dsc_control)
 
-        plot_monthly_discharge(dsc_sum_150, dsc_sum_control, years=0)
-        plot_monthly_discharge(dsc_sum_150, dsc_sum_control, years=3)
-        plot_monthly_discharge(dsc_sum_150, dsc_sum_control, years=5)
-        plot_monthly_discharge(dsc_sum_150, dsc_sum_control, years=10)
+        plot_monthly_discharge(dsc_sum_47, dsc_sum_control, years=0)
+        plot_monthly_discharge(dsc_sum_47, dsc_sum_control, years=3)
+        plot_monthly_discharge(dsc_sum_47, dsc_sum_control, years=5)
+        plot_monthly_discharge(dsc_sum_47, dsc_sum_control, years=10)
 
         plot_monthly_discharge_args(
-            dsc_sum_150,
             dsc_sum_47,
-            dsc_sum_16,
             dsc_sum_control,
-            labels=["150 Tg", "47 Tg", "16 Tg", "Control"],
+            labels=["47 Tg", "Control"],
             years=[0, 10],
         )
 
         plot_monthly_discharge_args(
-            dsc_sum_150,
             dsc_sum_47,
-            dsc_sum_16,
             dsc_sum_control,
-            labels=["150 Tg", "47 Tg", "16 Tg", "Control"],
+            labels=["47 Tg", "Control"],
             years=[0, 5],
         )
         plot_monthly_discharge_args(
-            dsc_sum_150,
             dsc_sum_47,
-            dsc_sum_16,
             dsc_sum_control,
-            labels=["150 Tg", "47 Tg", "16 Tg", "Control"],
+            labels=["47 Tg", "Control"],
             years=[5, 10],
         )
         plot_monthly_discharge_args(
-            dsc_sum_150,
             dsc_sum_47,
-            dsc_sum_16,
             dsc_sum_control,
-            labels=["150 Tg", "47 Tg", "16 Tg", "Control"],
+            labels=["47 Tg", "Control"],
             years=[10, 15],
         )
 
