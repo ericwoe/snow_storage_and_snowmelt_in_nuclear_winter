@@ -56,7 +56,7 @@ def plot_monthly_discharge(da_ts_150, da_ts_ctrl, years=0):
         years = "All"
 
     # Neue Figur und Achse erzeugen
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(16, 5))
 
     # Beide Zeitreihen in dieselbe Achse plotten
     ts_150_plot.plot(ax=ax, label="47 Tg Szenario")
@@ -78,6 +78,34 @@ def plot_monthly_discharge(da_ts_150, da_ts_ctrl, years=0):
 def months_between(dt1, dt2):
     """Berechnet die Anzahl der Monate zwischen zwei cftime-Objekten."""
     return (dt1.year - dt2.year) * 12 + (dt1.month - dt2.month)
+
+
+def plot_discharge(ts_scenario, ts_control):
+    import matplotlib.pyplot as plt
+
+    n_months = 180
+    months = np.arange(n_months)
+
+    fig, ax = plt.subplots(figsize=(18, 4))
+
+    # Vertikale Linie bei JEDEM Monat über alle Jahre
+    for j in np.arange(0, n_months, 1):
+        ax.axvline(j, color="lightgrey", linewidth=0.2)
+    ax.axvline(4, color="red", linewidth=0.5, linestyle="dashed")
+    # Dicke Linie + Beschriftung bei jedem Januar
+    jan_ticks = np.arange(0, n_months, 12)
+    for i, j in enumerate(jan_ticks):
+        ax.axvline(j, color="lightgrey", linewidth=0.5)
+
+    ax.set_xticks(jan_ticks)
+    ax.set_xticklabels(
+        [f"Jan / Year {i}" for i in range(15)], rotation=45, size=5, ha="right"
+    )
+    ax.plot(months, ts_scenario, linewidth=1.2, label="47 Tg Szenario")
+    ax.plot(months, ts_control, linewidth=1.2, label="Control Szenario")
+    ax.set_xlabel("Time (months)")
+    ax.set_ylabel("Discharge from Snow Melt (m3/s)")
+    ax.legend()
 
 
 def plot_monthly_discharge_args(*dataarrays, labels=None, years=None):
@@ -123,7 +151,7 @@ def plot_monthly_discharge_args(*dataarrays, labels=None, years=None):
         month_offset = 0
 
     # Figur und Achse erzeugen
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(16, 5))
 
     # Alle Zeitreihen plotten
     for da, label in zip(arrays_to_plot, labels):
@@ -288,6 +316,8 @@ if __name__ == "__main__":
         dsc_sum_47 = monthly_discharge_sum(dsc_47)
         dsc_sum_16 = monthly_discharge_sum(dsc_16)
         dsc_sum_control = monthly_discharge_sum(dsc_control)
+
+        plot_discharge(dsc_sum_47, dsc_sum_control)
 
         plot_monthly_discharge(dsc_sum_47, dsc_sum_control, years=0)
         plot_monthly_discharge(dsc_sum_47, dsc_sum_control, years=3)
