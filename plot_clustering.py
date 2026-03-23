@@ -121,7 +121,8 @@ def elbow_plot(inertias, save_path):
 def plot_cluster_timeseries(
     timeseries: np.ndarray,  # shape: (n_land_cells, 360)
     labels: np.ndarray,  # shape: (n_land_cells,)
-    cell_areas: np.ndarray,  # shape: (n_land_cells,) ← neu
+    cell_areas: np.ndarray,  # shape: (n_land_cells,)
+    fractions: np.ndarray,  # shape: (n_land_cells,)
     n_clusters: int = 5,
     title: str = None,
     parameter_name: str = "Snow Storage (mm)",
@@ -151,7 +152,9 @@ def plot_cluster_timeseries(
     for cluster in range(n_clusters):
         cluster_mask = labels == cluster
         cluster_ts = timeseries[cluster_mask]  # shape: (n_cells_in_cluster, time)
-        cluster_weights = cell_areas[cluster_mask]  # shape: (n_cells_in_cluster,)
+        # Effektive Fläche = Zellfläche * Landanteil
+        effective_areas = cell_areas * fractions  # ← neu
+        cluster_weights = effective_areas[cluster_mask]  # shape: (n_cells_in_cluster,)
         ax = axes[cluster]
 
         for q in np.arange(0.1, 0.6, 0.1):
@@ -451,11 +454,14 @@ if __name__ == "__main__":
         "Control": ds_ctrl,
         "all": [ds_ctrl, ds_16, ds_47, ds_150],
     }
+
+    fraction_mask = xr.open_dataarray("./data/interim/land_mask_neu.nc")
     # Calculate cell area for weighting
     cell_area = compute_grid_cell_area(ds_47.snow_storage)
     # Create land mask for extracting cell areas of only land cells
     land_mask = ~np.isnan(ds_47.snow_storage.isel(time=0))
     cell_area_1d = cell_area.values[land_mask.values]  # shape: (n_land_cells,)
+    fractions_1d = fraction_mask.values[land_mask.values]  # shape: (n_land_cells,)
 
     for folder in sorted(os.listdir(base_path)):
         folder_path = os.path.join(base_path, folder)
@@ -495,6 +501,7 @@ if __name__ == "__main__":
                     timeseries,
                     labels,
                     cell_area_1d,
+                    fractions_1d,
                     n_clusters=i,
                     parameter_name="Snow Storage (mm)",
                     save_path=folder_path,
