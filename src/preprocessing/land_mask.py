@@ -1,79 +1,88 @@
 import xarray as xr
 import geopandas as gpd
 import numpy as np
+from shapely.geometry import box
 
 
-def create_mask(ds: xr.Dataset, shape: gpd.GeoDataFrame) -> xr.DataArray:
+def create_mask(da, shape):
     """
-    Create a fractional mask from a shapefile for the lat/lon grid of a dataset.
-
-    For each grid cell, the fraction of the cell area that intersects with the
-    provided shape is computed. This allows for partial coverage of coastal or
-    boundary cells, rather than a binary land/ocean assignment.
-
-    Parameters
+    Berechnet den Landanteil jeder Rasterzelle.
+    Parameter
     ----------
-    ds : xr.Dataset
-        Dataset containing 'lat' and 'lon' coordinates in [0, 360] range.
-    shape : gpd.GeoDataFrame
-        GeoDataFrame containing the shape polygons to mask against (e.g. land area,
-        country boundaries). Must be in EPSG:4326 (WGS84).
-
+    da : xarray.DataArray
+        Muss lat- und lon-Koordinaten besitzen (lon 0–360).
+    shape : geopandas.GeoDataFrame
+        Shapefile mit Landpolygonen (lon -180 bis 180).
     Returns
     -------
-    xr.DataArray
-        Fractional mask with values in [0.0, 1.0], where 0.0 means no overlap
-        with the shape and 1.0 means full coverage. Has the same lat/lon grid
-        as the input dataset. Longitude is returned in [0, 360] range.
-
-    Notes
-    -----
-    - Longitude is temporarily converted to [-180, 180] for the spatial
-      intersection, then converted back to [0, 360].
-    - Area fractions are computed in geographic coordinates (degrees), not in
-      an equal-area projection. This introduces a small distortion at high
-      latitudes, which is acceptable for most masking applications.
-    - All shape polygons are merged into a single union before intersection,
-      which avoids double-counting of overlapping polygons.
-
-    Examples
-    --------
-    >>> land_mask = create_mask(ds, gadm_gdf)
-    >>> snow_volume = ds.snow_storage * cell_area * land_mask
+    fractions : xarray.DataArray
+        2D DataArray (lat, lon) mit Landanteilen zwischen 0 und 1.
     """
-    from shapely.geometry import box
-
-    ds_temp = ds.copy()
-    ds_temp = ds_temp.assign_coords(lon=((ds_temp.lon + 180) % 360) - 180).sortby("lon")
-    lat = ds_temp.lat.values
-    lon = ds_temp.lon.values
-    res_lat = lat[1] - lat[0]
-    res_lon = lon[1] - lon[0]
-
-    polygons = [
-        box(x - res_lon / 2, y - res_lat / 2, x + res_lon / 2, y + res_lat / 2)
-        for y in lat
-        for x in lon
-    ]
-    cells_gdf = gpd.GeoDataFrame(geometry=polygons, crs="EPSG:4326")
-
+    # Alle Landpolygone zu einem einzigen Polygon zusammenführen
+    # → vermeidet mehrfache Verschneidungen pro Zelle
     shape_union = shape.union_all()
 
-    fractional_coverage = np.zeros(len(polygons), dtype=float)
-    for i, cell in enumerate(cells_gdf.geometry):
-        if cell.intersects(shape_union):
-            intersection = cell.intersection(shape_union)
-            fractional_coverage[i] = intersection.area / cell.area
+    # Ergebnisarray initialisieren (alle Werte = 0)
+    fractions = np.zeros((len(da.lat), len(da.lon)))
 
-    land_mask = fractional_coverage.reshape(len(lat), len(lon))
-    land_mask_xr = xr.DataArray(
-        land_mask,
-        coords={"lat": lat, "lon": lon},
-        dims=("lat", "lon"),
-        name="land_mask",
+    # Halbe Zellgröße in jede Richtung berechnen
+    # → wird benötigt um die Zellgrenzen um den Mittelpunkt zu berechnen
+    dlat = float(abs(da.lat[1] - da.lat[0])) / 2
+    dlon = float(abs(da.lon[1] - da.lon[0])) / 2
+
+    for i, lat in enumerate(da.lat.values):
+        for j, lon in enumerate(da.lon.values):
+
+            # Lon von 0–360 auf -180–180 umrechnen damit es zum
+            # Koordinatensystem des Shapefiles passt
+            # Beispiel: 270° → -90°,  180° bleibt 180°
+            lon_centered = lon if lon <= 180 else lon - 360
+
+            # Zellgrenzen in Lat-Richtung berechnen und auf ±90° clippen
+            # → verhindert dass Polzellen über den Pol hinausragen
+            lat_lower = max(lat - dlat, -90)
+            lat_upper = min(lat + dlat, 90)
+
+            # Zellgrenzen in Lon-Richtung berechnen
+            lon_left = lon_centered - dlon
+            lon_right = lon_centered + dlon
+
+            # Sonderfall: Zelle überschreitet den Antimeridian (180°) nach rechts
+            # → Zelle wird in zwei Hälften aufgeteilt: rechts von 180° wird
+            #    auf die linke Seite der Karte gespiegelt (-180° bis lon_right-360°)
+            if lon_right > 180:
+                cell_left = box(lon_left, lat_lower, 180, lat_upper)
+                cell_right = box(-180, lat_lower, lon_right - 360, lat_upper)
+                intersection = (
+                    shape_union.intersection(cell_left).area
+                    + shape_union.intersection(cell_right).area
+                )
+                cell_area = cell_left.area + cell_right.area
+
+            # Sonderfall: Zelle überschreitet den Antimeridian (-180°) nach links
+            # → analog: linke Hälfte wird auf die rechte Seite gespiegelt
+            elif lon_left < -180:
+                cell_left = box(lon_left + 360, lat_lower, 180, lat_upper)
+                cell_right = box(-180, lat_lower, lon_right, lat_upper)
+                intersection = (
+                    shape_union.intersection(cell_left).area
+                    + shape_union.intersection(cell_right).area
+                )
+                cell_area = cell_left.area + cell_right.area
+
+            # Normalfall: Zelle liegt vollständig innerhalb von ±180°
+            else:
+                cell = box(lon_left, lat_lower, lon_right, lat_upper)
+                intersection = shape_union.intersection(cell).area
+                cell_area = cell.area
+
+            # Landanteil = Schnittfläche mit Landpolygon / Gesamtfläche der Zelle
+            fractions[i, j] = intersection / cell_area
+
+    # Als xarray DataArray zurückgeben mit denselben Koordinaten wie Eingangsarray
+    return xr.DataArray(
+        fractions,
+        coords={"lat": da.lat, "lon": da.lon},
+        dims=["lat", "lon"],
+        attrs={"long_name": "Land fraction", "units": "1"},
     )
-    land_mask_xr = land_mask_xr.assign_coords(
-        lon=((land_mask_xr.lon + 360) % 360)
-    ).sortby("lon")
-
-    return land_mask_xr

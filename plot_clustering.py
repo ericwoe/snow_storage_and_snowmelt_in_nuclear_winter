@@ -9,11 +9,98 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import matplotlib.colors as mcolors
 import math
+from snow_analysis import compute_grid_cell_area
 
 
 plt.style.use(
     "https://raw.githubusercontent.com/allfed/ALLFED-matplotlib-style-sheet/main/ALLFED.mplstyle"
 )
+
+
+def weighted_quantile(
+    values: np.ndarray, weights: np.ndarray, quantile: float
+) -> np.ndarray:
+    """
+    values:  shape (n_cells, time_steps) - Zeitreihenwerte pro Zelle
+    weights: shape (n_cells,)            - Flächengewicht pro Zelle
+    quantile: float                      - gewünschtes Quantil, z.B. 0.5 für Median
+    """
+
+    # -------------------------------------------------------------------------
+    # SCHRITT 1: Sortieren
+    # -------------------------------------------------------------------------
+    # np.argsort gibt nicht die sortierten Werte zurück, sondern die INDIZES
+    # die die Werte sortieren würden. axis=0 bedeutet: spaltenweise, also
+    # pro Zeitschritt unabhängig sortieren.
+    #
+    # Beispiel für einen Zeitschritt:
+    #   Werte:   [5.2, 2.1, 8.4, 1.3]
+    #   Indizes: [3,   1,   0,   2  ]  ← so muss man umsortieren für aufsteig. Reihenfolge
+    sorted_indices = np.argsort(values, axis=0)  # shape: (n_cells, time_steps)
+
+    # Mit take_along_axis werden die Werte anhand der Sortier-Indizes umgeordnet.
+    # Ergebnis: pro Zeitschritt sind die Zellwerte aufsteigend sortiert.
+    #
+    #   Vorher:  [5.2, 2.1, 8.4, 1.3]
+    #   Nachher: [1.3, 2.1, 5.2, 8.4]
+    sorted_values = np.take_along_axis(
+        values, sorted_indices, axis=0
+    )  # shape: (n_cells, time_steps)
+
+    # Die Gewichte (Flächen) werden in dieselbe Reihenfolge gebracht wie die Werte.
+    # weights hat shape (n_cells,), sorted_indices hat shape (n_cells, time_steps).
+    # NumPy broadcasted weights automatisch auf alle Zeitschritte.
+    #
+    # Wichtig: Gewichte müssen zur selben Zelle gehören wie der Wert!
+    #   Werte sortiert:   [1.3,  2.1,  5.2,  8.4 ]  ← Zellen 3, 1, 0, 2
+    #   Gewichte sortiert:[150,  200,  100,   50  ]  ← Flächen derselben Zellen
+    sorted_weights = weights[sorted_indices]  # shape: (n_cells, time_steps)
+
+    # -------------------------------------------------------------------------
+    # SCHRITT 2: Kumulative Gewichte berechnen und normalisieren
+    # -------------------------------------------------------------------------
+    # np.cumsum summiert die Gewichte von oben nach unten (axis=0 = spaltenweise).
+    # Dadurch entsteht eine aufsteigende Kurve der "aufgesammelten Fläche".
+    #
+    #   Gewichte:          [ 150,  200,  100,   50]
+    #   Kumulativ:         [ 150,  350,  450,  500]
+    cumulative_weights = np.cumsum(
+        sorted_weights, axis=0
+    )  # shape: (n_cells, time_steps)
+
+    # Durch Division durch den letzten Wert (= Gesamtfläche) wird auf [0, 1] normalisiert.
+    # cumulative_weights[-1, :] ist die Gesamtsumme aller Gewichte pro Zeitschritt.
+    #
+    #   Kumulativ normalisiert: [0.30, 0.70, 0.90, 1.00]
+    #
+    # Interpretation: Nach der ersten Zelle sind 30% der Gesamtfläche "abgedeckt",
+    # nach der zweiten 70%, usw.
+    # Jede Fläche als Bruch an Gesamtfäche (zum Ablesen)
+    cumulative_weights /= cumulative_weights[-1, :]  # shape: (n_cells, time_steps)
+
+    # -------------------------------------------------------------------------
+    # SCHRITT 3: Quantil per Interpolation ablesen
+    # -------------------------------------------------------------------------
+    # Für jeden Zeitschritt separat: np.interp sucht auf der normierten Flächen-
+    # Achse (x) die Position des gewünschten Quantils und liest den zugehörigen
+    # Wert (y) ab. Zwischen zwei Stützpunkten wird linear interpoliert.
+    #
+    # Beispiel für quantile=0.5 (Median):
+    #   x (kum. Fläche): [0.30, 0.70, 0.90, 1.00]
+    #   y (Werte):       [1.3,  2.1,  5.2,  8.4 ]
+    #
+    #   np.interp(0.5, x, y) → 0.5 liegt zwischen 0.30 und 0.70
+    #   → linear interpoliert: 1.3 + (2.1 - 1.3) * (0.5 - 0.30) / (0.70 - 0.30)
+    #   → Ergebnis: ~1.7
+    #
+    # Ersten Index finden, bei dem die kumulative Fläche >= quantile ist
+    # np.argmax gibt den ersten True-Wert zurück (axis=0 = pro Zeitschritt)
+    indices = np.argmax(cumulative_weights >= quantile, axis=0)  # shape: (time_steps,)
+
+    # Den zugehörigen Wert aus sorted_values auslesen
+    result = sorted_values[indices, np.arange(values.shape[1])]
+
+    return result  # shape: (time_steps,)
 
 
 def elbow_plot(inertias, save_path):
@@ -34,6 +121,7 @@ def elbow_plot(inertias, save_path):
 def plot_cluster_timeseries(
     timeseries: np.ndarray,  # shape: (n_land_cells, 360)
     labels: np.ndarray,  # shape: (n_land_cells,)
+    cell_areas: np.ndarray,  # shape: (n_land_cells,) ← neu
     n_clusters: int = 5,
     title: str = None,
     parameter_name: str = "Snow Storage (mm)",
@@ -41,10 +129,10 @@ def plot_cluster_timeseries(
 ):
     """
     Plots time series for all clusters with quantile bands
-
     Arguments:
         timeseries: np.ndarray, shape (n_land_cells, 180) - time series data for all land cells
         labels: np.ndarray, shape (n_land_cells,) - cluster assignments
+        cell_areas: np.ndarray, shape (n_land_cells,) - cell areas for weighted statistics
         n_clusters: int - number of clusters
         parameter_name: str - name of the parameter being plotted
     """
@@ -53,49 +141,41 @@ def plot_cluster_timeseries(
         ncols=1,
         sharey=False,
         sharex=False,
-        figsize=(16, 4 * n_clusters),  # ← dynamische Höhe
-        constrained_layout=True,  # ← verhindert Überlappung automatisch
+        figsize=(16, 4 * n_clusters),
+        constrained_layout=True,
     )
 
-    # Falls nur 1 Cluster (sollte nicht passieren), axes in Liste umwandeln
     if n_clusters == 1:
         axes = [axes]
 
     for cluster in range(n_clusters):
-        # Alle Zeitreihen dieses Clusters extrahieren
         cluster_mask = labels == cluster
-        cluster_ts = timeseries[cluster_mask]  # shape: (n_cells_in_cluster, 360)
-
+        cluster_ts = timeseries[cluster_mask]  # shape: (n_cells_in_cluster, time)
+        cluster_weights = cell_areas[cluster_mask]  # shape: (n_cells_in_cluster,)
         ax = axes[cluster]
 
-        # Quantile berechnen und plotten
         for q in np.arange(0.1, 0.6, 0.1):
-            q_up = np.quantile(cluster_ts, 1 - q, axis=0)
-            q_down = np.quantile(cluster_ts, q, axis=0)
-
+            q_up = weighted_quantile(cluster_ts, cluster_weights, 1 - q)
+            q_down = weighted_quantile(cluster_ts, cluster_weights, q)
             ax.fill_between(
-                x=range(180),
+                x=range(cluster_ts.shape[1]),
                 y1=q_down,
                 y2=q_up,
                 color="#3A6A91",
                 alpha=q * 2,
             )
 
-        # Median plotten
-        median = np.median(cluster_ts, axis=0)
-        ax.plot(range(180), median, color="black", linewidth=2)
-
-        # Labels und Titel
+        # Gewichteter Median
+        median = weighted_quantile(cluster_ts, cluster_weights, 0.5)
+        ax.plot(range(cluster_ts.shape[1]), median, color="black", linewidth=2)
+        cluster_area_fraction = cluster_weights.sum() / cell_areas.sum() * 100
         ax.set_title(
-            f"Cluster {cluster}\n({cluster_ts.shape[0]} cells, "
-            f"{cluster_ts.shape[0]/len(labels)*100:.1f}%)"
+            f"Cluster {cluster}\n({cluster_area_fraction:.1f}% of total area) - {cluster_ts.shape[0]} cells"
         )
         ax.set_xlabel("Months")
 
         if cluster == 0:
             ax.set_ylabel(parameter_name)
-
-            # Legende nur im ersten Subplot
             patches_list = []
             patches_list.append(mpatches.Patch(color="black", label="Median"))
             patches_list.append(
@@ -112,10 +192,8 @@ def plot_cluster_timeseries(
             )
             ax.legend(handles=patches_list, loc="best")
 
-        # Grid hinzufügen
         ax.grid(True, alpha=0.3)
 
-    # Subplot-Labels (a), b), c), d))
     for i, ax in enumerate(axes):
         ax.text(
             0.02,
@@ -373,6 +451,11 @@ if __name__ == "__main__":
         "Control": ds_ctrl,
         "all": [ds_ctrl, ds_16, ds_47, ds_150],
     }
+    # Calculate cell area for weighting
+    cell_area = compute_grid_cell_area(ds_47.snow_storage)
+    # Create land mask for extracting cell areas of only land cells
+    land_mask = ~np.isnan(ds_47.snow_storage.isel(time=0))
+    cell_area_1d = cell_area.values[land_mask.values]  # shape: (n_land_cells,)
 
     for folder in sorted(os.listdir(base_path)):
         folder_path = os.path.join(base_path, folder)
@@ -411,6 +494,7 @@ if __name__ == "__main__":
                 plot_cluster_timeseries(
                     timeseries,
                     labels,
+                    cell_area_1d,
                     n_clusters=i,
                     parameter_name="Snow Storage (mm)",
                     save_path=folder_path,

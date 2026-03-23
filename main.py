@@ -10,27 +10,27 @@ SCENARIOS = {
     "Control": {
         "data_dir": "./data/Model_Output_From_Harrison/Temp_Precip/nw_cntrl_03",
         "pattern": "nw_cntrl_03.cam.h0.*.nc",
-        "result_path": "./results/snow_control.nc",
+        "result_path": "./results/Control/snow_control.nc",
     },
     "16": {
         "data_dir": "./data/Model_Output_From_Harrison/Temp_Precip/nw_targets_04",
         "pattern": "nw_targets_04.cam.h0.*.nc",
-        "result_path": "./results/snow_16.nc",
+        "result_path": "./results/16/snow_16.nc",
     },
     "47": {
         "data_dir": "./data/Model_Output_From_Harrison/Temp_Precip/nw_targets_05",
         "pattern": "nw_targets_05.cam.h0.*.nc",
-        "result_path": "./results/snow_47.nc",
+        "result_path": "./results/47/snow_47.nc",
     },
     "150": {
         "data_dir": "./data/Model_Output_From_Harrison/Temp_Precip/nw_ur_150_07",
         "pattern": "nw_ur_150_07.cam.h0.*.nc",
-        "result_path": "./results/snow_150.nc",
+        "result_path": "./results/150/snow_150.nc",
     },
 }
 
 GADM_FILE_PATH = "./data/ne_110m_land/ne_110m_land.shp"
-LAND_MASK_OUTPUT_PATH = "./data/interim/land_mask_neu.nc"
+LAND_MASK_OUTPUT_PATH = "./data/interim/alte Masken/land_mask_alt.nc"
 
 
 datasets = {}

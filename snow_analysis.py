@@ -2,8 +2,6 @@ import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
 import cftime
-from src.preprocessing.land_mask import create_mask
-import geopandas as gpd
 import os
 from matplotlib.colors import TwoSlopeNorm, SymLogNorm
 import matplotlib.colors as mcolors
@@ -24,7 +22,7 @@ def change_time(ds):
     ds.coords["time"] = new_time
 
 
-def compute_cell_area(da):
+def compute_cell_area_old(da):
     """
     Berechnet die Zellfläche (m²) für ein reguläres Lat-Lon-Gitter.
 
@@ -39,7 +37,7 @@ def compute_cell_area(da):
         2D DataArray (lat, lon) mit Zellflächen in m².
     """
 
-    R = 6371000  # Erdradius in Metern
+    R = 6371.0  # Erdradius in Kilometern
 
     # Gitterabstände (angenommen regelmäßig)
     dlat = np.deg2rad(abs(da.lat[1] - da.lat[0]))
@@ -55,8 +53,32 @@ def compute_cell_area(da):
     cell_area = area_1d.broadcast_like(da.isel(time=0))
 
     cell_area.name = "cell_area"
-    cell_area.attrs["units"] = "m2"
+    cell_area.attrs["units"] = "km2"
 
+    return cell_area
+
+
+def compute_grid_cell_area(da):
+    """
+    Berechnet die Fläche jeder Rasterzelle in km².
+    Gibt ein 1D-DataArray (nur Latitude) zurück – xarray broadcastet automatisch.
+    """
+    R = 6371.0  # Erdradius in km
+    dlat = abs(da.lat[1] - da.lat[0])
+    dlon = abs(da.lon[1] - da.lon[0])
+    lat_rad = np.deg2rad(da.lat)
+    dlat_rad = np.deg2rad(dlat)
+    dlon_rad = np.deg2rad(dlon)
+
+    lat_upper = np.clip(lat_rad + dlat_rad / 2, -np.pi / 2, np.pi / 2)
+    lat_lower = np.clip(lat_rad - dlat_rad / 2, -np.pi / 2, np.pi / 2)
+
+    area_1d = R**2 * dlon_rad * np.abs(np.sin(lat_upper) - np.sin(lat_lower))
+
+    # Zu 2D expandieren
+    cell_area = area_1d.broadcast_like(da.isel(time=0))
+    cell_area.name = "cell_area"
+    cell_area.attrs["units"] = "km2"
     return cell_area
 
 
@@ -89,7 +111,7 @@ def sum_per_month(
     >>> snow_volume = sum_per_month(ds.snow_depth, cell_area, land_mask)
     """
     da_m = da / 1000
-    volume = da_m * cell_area * mask
+    volume = da_m * (cell_area * 1000 * 1000) * mask
     volume_sum_per_month = volume.sum(dim=("lat", "lon"))
     return volume_sum_per_month
 
@@ -1028,7 +1050,7 @@ if __name__ == "__main__":
     ds_ctrl = xr.open_dataset("./results/Control/snow_control.nc")
     mask = xr.open_dataarray("./data/interim/land_mask_neu.nc")
 
-    cell_area = compute_cell_area(ds_ctrl.snow_storage)
+    cell_area = compute_grid_cell_area(ds_ctrl.snow_storage)
 
     for ds in [ds_16, ds_47, ds_150, ds_ctrl]:
         change_time(ds)
@@ -1142,7 +1164,7 @@ if __name__ == "__main__":
             "150 Tg",
         ],
     )
-    plot_hovmoeller_snow_storage_anomaly(
+    """plot_hovmoeller_snow_storage_anomaly(
         ds_16,
         ds_47,
         ds_150,
@@ -1153,7 +1175,7 @@ if __name__ == "__main__":
             "47 Tg",
             "150 Tg",
         ],
-    )
+    )"""
     plot_hovmoeller_snow_storage_sum_anomaly_absolute(
         ds_16,
         ds_47,
@@ -1167,38 +1189,3 @@ if __name__ == "__main__":
             "150 Tg",
         ],
     )
-
-    for river, (filepath, river_id) in main_rivers.items():
-        # Select river from Data
-        basins_lev4 = gpd.read_file(filepath)
-        river_basin = basins_lev4[basins_lev4["MAIN_BAS"] == river_id]
-        river_basin_diss = river_basin.dissolve()
-        # Fraction of Raster Cells in River Basin
-        river_mask = create_mask(ds_150, river_basin_diss)
-        plot_global_snow_melt_per_month(
-            ds_47,
-            ds_16,
-            ds_150,
-            ds_ctrl,
-            cell_area=cell_area,
-            mask=river_mask,
-            variable="snow_melt",
-        )
-        plot_global_snow_melt_per_year(
-            ds_47,
-            ds_16,
-            ds_150,
-            ds_ctrl,
-            cell_area=cell_area,
-            mask=river_mask,
-            variable="snow_melt",
-        )
-        plot_global_snow_melt_anomaly_per_year(
-            ds_47,
-            ds_16,
-            ds_150,
-            control=ds_ctrl,
-            cell_area=cell_area,
-            mask=river_mask,
-            variable="snow_melt",
-        )
