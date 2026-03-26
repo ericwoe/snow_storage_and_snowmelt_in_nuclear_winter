@@ -1,55 +1,56 @@
 import xarray as xr
-import geopandas as gpd
 import numpy as np
 from shapely.geometry import box
 
 
 def create_mask(da, shape):
     """
-    Berechnet den Landanteil jeder Rasterzelle.
+    Calculates the land covered fraction for each grid cell.
+
     Parameter
     ----------
     da : xarray.DataArray
-        Muss lat- und lon-Koordinaten besitzen (lon 0–360).
+        Containing lat and lon coordinates defining the grid for which
+        the land fraction should be calculated.
     shape : geopandas.GeoDataFrame
-        Shapefile mit Landpolygonen (lon -180 bis 180).
+        Shapefile with land polygons (lon -180 bis 180).
+
     Returns
     -------
     fractions : xarray.DataArray
-        2D DataArray (lat, lon) mit Landanteilen zwischen 0 und 1.
+        2D DataArray (lat, lon) with land fraction between 0 and 1.
     """
-    # Alle Landpolygone zu einem einzigen Polygon zusammenführen
-    # → vermeidet mehrfache Verschneidungen pro Zelle
+    # Combine all land polygons into one geometry (union)
     shape_union = shape.union_all()
 
-    # Ergebnisarray initialisieren (alle Werte = 0)
+    # Initialize result array with zeros, same shape as input dataarray (lat, lon)
     fractions = np.zeros((len(da.lat), len(da.lon)))
 
-    # Halbe Zellgröße in jede Richtung berechnen
-    # → wird benötigt um die Zellgrenzen um den Mittelpunkt zu berechnen
+    # Calculate half the grid cell size in lat and lon direction to define cell boundaries around
+    # the center point
     dlat = float(abs(da.lat[1] - da.lat[0])) / 2
     dlon = float(abs(da.lon[1] - da.lon[0])) / 2
 
     for i, lat in enumerate(da.lat.values):
         for j, lon in enumerate(da.lon.values):
 
-            # Lon von 0–360 auf -180–180 umrechnen damit es zum
-            # Koordinatensystem des Shapefiles passt
-            # Beispiel: 270° → -90°,  180° bleibt 180°
+            # Correct the longitude from 0–360 to -180–180 so it fits the
+            # coordinate system of the shapefile
+            # Example: 270° -> -90°,  180° -> 180°
             lon_centered = lon if lon <= 180 else lon - 360
 
-            # Zellgrenzen in Lat-Richtung berechnen und auf ±90° clippen
-            # → verhindert dass Polzellen über den Pol hinausragen
+            # Calculate cell boundaries in lat direction and clip to ±90°
+            # to avoid invalid geometries at the poles
             lat_lower = max(lat - dlat, -90)
             lat_upper = min(lat + dlat, 90)
 
-            # Zellgrenzen in Lon-Richtung berechnen
+            # Calculate cell boundaries in lon direction
             lon_left = lon_centered - dlon
             lon_right = lon_centered + dlon
 
-            # Sonderfall: Zelle überschreitet den Antimeridian (180°) nach rechts
-            # → Zelle wird in zwei Hälften aufgeteilt: rechts von 180° wird
-            #    auf die linke Seite der Karte gespiegelt (-180° bis lon_right-360°)
+            # Special Case One: Cell crosses the International Date Line (180°) to the right
+            # Cell is split into two halves: right of 180° is
+            # mirrored to the left side of the map (-180° to lon_right-360°)
             if lon_right > 180:
                 cell_left = box(lon_left, lat_lower, 180, lat_upper)
                 cell_right = box(-180, lat_lower, lon_right - 360, lat_upper)
@@ -59,8 +60,9 @@ def create_mask(da, shape):
                 )
                 cell_area = cell_left.area + cell_right.area
 
-            # Sonderfall: Zelle überschreitet den Antimeridian (-180°) nach links
-            # → analog: linke Hälfte wird auf die rechte Seite gespiegelt
+            # Special Case Two: Cell crosses the International Date Line (-180°) to the left
+            # analog: left half of the cell is mirrored to the
+            # right side of the map (180° to lon_left+360°)
             elif lon_left < -180:
                 cell_left = box(lon_left + 360, lat_lower, 180, lat_upper)
                 cell_right = box(-180, lat_lower, lon_right, lat_upper)
@@ -70,19 +72,18 @@ def create_mask(da, shape):
                 )
                 cell_area = cell_left.area + cell_right.area
 
-            # Normalfall: Zelle liegt vollständig innerhalb von ±180°
+            # Usual Case: Cell lies entirely within ±180°
             else:
                 cell = box(lon_left, lat_lower, lon_right, lat_upper)
                 intersection = shape_union.intersection(cell).area
                 cell_area = cell.area
 
-            # Landanteil = Schnittfläche mit Landpolygon / Gesamtfläche der Zelle
             fractions[i, j] = intersection / cell_area
 
-    # Als xarray DataArray zurückgeben mit denselben Koordinaten wie Eingangsarray
+    # Return as DataArray with same coordinates and dimensions as input dataarray
     return xr.DataArray(
         fractions,
         coords={"lat": da.lat, "lon": da.lon},
         dims=["lat", "lon"],
-        attrs={"long_name": "Land fraction", "units": "1"},
+        attrs={"long_name": "Land fraction", "units": "None"},
     )

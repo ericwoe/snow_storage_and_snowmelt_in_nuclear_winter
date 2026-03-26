@@ -30,7 +30,7 @@ SCENARIOS = {
 }
 
 GADM_FILE_PATH = "./data/ne_110m_land/ne_110m_land.shp"
-LAND_MASK_OUTPUT_PATH = "./data/interim/alte Masken/land_mask_alt.nc"
+LAND_MASK_FILE_PATH = "./data/interim/land_mask_neu.nc"
 
 
 datasets = {}
@@ -44,10 +44,11 @@ for name, config in SCENARIOS.items():
     )
     datasets[name] = ds
 
-# Align Datasets
+# Align all Datasets from Dictionary "datasets"
+# along all 3 dimensions (time, lat, lon)
 aligned = xr.align(*datasets.values(), join="inner")
 
-# Back to Dict
+# Back to Dictionary
 datasets = dict(zip(datasets.keys(), aligned))
 
 for name, ds in datasets.items():
@@ -58,7 +59,7 @@ for name, ds in datasets.items():
     ds = add_snow_variables(ds)
 
     # Create or import land mask
-    land_mask_path = Path(LAND_MASK_OUTPUT_PATH)
+    land_mask_path = Path(LAND_MASK_FILE_PATH)
     if land_mask_path.exists():
         print("Loading existing land mask")
         mask = xr.open_dataarray(land_mask_path)
@@ -66,7 +67,7 @@ for name, ds in datasets.items():
         print("Creating land mask")
         gadm = gpd.read_file(GADM_FILE_PATH)
         mask = create_mask(ds, gadm)
-        print(f"Saving Mask to {LAND_MASK_OUTPUT_PATH}")
+        print(f"Saving Mask to {LAND_MASK_FILE_PATH}")
         # Ensure directory exists
         land_mask_path.parent.mkdir(parents=True, exist_ok=True)
         # Save mask to NetCDF

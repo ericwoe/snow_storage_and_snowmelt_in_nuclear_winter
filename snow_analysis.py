@@ -63,7 +63,7 @@ def compute_grid_cell_area(da):
     Berechnet die Fläche jeder Rasterzelle in km².
     Gibt ein 1D-DataArray (nur Latitude) zurück – xarray broadcastet automatisch.
     """
-    R = 6371.0  # Erdradius in km
+    R = 6371000.0  # Erdradius in m
     dlat = abs(da.lat[1] - da.lat[0])
     dlon = abs(da.lon[1] - da.lon[0])
     lat_rad = np.deg2rad(da.lat)
@@ -97,7 +97,7 @@ def sum_per_month(
     da : xr.DataArray
         Snow depth in millimeters, with dimensions (time, lat, lon).
     cell_area : xr.DataArray
-        Area of each grid cell in square meters, with dimensions (lat, lon).
+        Area of each grid cell in square kilometers, with dimensions (lat, lon).
     mask : xr.DataArray
         Binary land mask (1 = land, 0 = ocean/exclude), with dimensions (lat, lon).
 
