@@ -37,7 +37,7 @@ def load_climate_files(data_dir, pattern) -> xr.Dataset:
 
 def calculate_days_in_month(ds: xr.Dataset) -> xr.DataArray:
     """
-    Calculate the number of days in each month from time bounds.
+    Calculate the number of days in each month from time bounds attribute of time dimension.
 
     Parameters
     ----------
@@ -67,6 +67,16 @@ def calculate_total_precipitation_rate(
 ) -> xr.DataArray:
     """
     Calculate total precipitation rate (PRECC + PRECL).
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Dataset containing precipitation variables in m s-1
+    var_precc : str
+        Name of variable for convective precipitation rate (default: "PRECC")
+    var_precl : str
+        Name of variable for large-scale precipitation rate (default: "PRECL")
+
 
     Returns
     -------
@@ -129,7 +139,7 @@ def preprocess_dataset(ds: xr.Dataset) -> xr.Dataset:
     ds["t_mean_celsius"] = kelvin_to_celsius(ds.TS)
     ds["t_mean_celsius"].attrs = {
         "units": "Celsius",
-        "description": "Surface temperature converted from Kelvin to Celsius",
+        "description": "Mean Surface Temperature in Celsius",
     }
 
     return ds
@@ -150,7 +160,10 @@ def run_preprocessing(
     if output_path:
         print(f"Saving processed data to {output_path}")
         print("Deleting time_bnds")
-        ds = ds.drop_vars("time_bnds")
+        ds = ds.drop_vars(
+            "time_bnds"
+        )  # notwendig da hier sonst Fehler beim Speichern auftritt: "ValueError:
+        # Cannot encode time_bnds with cftime objects"
         ds.to_netcdf(output_path, engine="netcdf4")
 
     return ds

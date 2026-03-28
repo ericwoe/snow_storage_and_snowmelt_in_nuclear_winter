@@ -1,6 +1,11 @@
 from src.preprocessing import prepare_data
 from src.preprocessing.land_mask import create_mask
 from src.processing.snow_model import add_snow_variables
+from src.processing.clustering import (
+    prepare_time_series,
+    time_series_analysis,
+    convert_labels_to_xarray,
+)
 import xarray as xr
 from pathlib import Path
 import geopandas as gpd
@@ -73,7 +78,7 @@ for name, ds in datasets.items():
         # Save mask to NetCDF
         mask.to_netcdf(land_mask_path)
 
-    # Apply land mask to dataset
+    # Apply land mask to dataset - values become NaN where mask <= 0
     print("Applying land mask to dataset")
     ds = ds.where(mask > 0)
 
@@ -87,3 +92,21 @@ for name, ds in datasets.items():
     # Ensure directory exists
     result_path.parent.mkdir(parents=True, exist_ok=True)
     ds.to_netcdf(result_path)
+
+    # Datasets Dict aktualisieren
+    datasets[name] = ds
+##################################################################################################
+# CLUSTERING - 47 Tg Scenario
+##################################################################################################
+timeseries = prepare_time_series(datasets["47"].snow_storage)
+print("Shape timeseries objekt", timeseries.shape)
+
+labels, km = time_series_analysis(timeseries, 5)
+
+print("Anzahl Labels:", len(labels))
+
+labels_xarray = convert_labels_to_xarray(labels, datasets["47"].snow_storage)
+
+datasets["47"]["5_clusters"] = labels_xarray
+
+datasets["47"].to_netcdf("./results/47/snow_47.nc")

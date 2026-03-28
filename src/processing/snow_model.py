@@ -17,7 +17,7 @@ def calculate_snow_dynamics(
 
     Calculates the snow based on a simple temperature based model as described
     in Massmann (2019) "Modelling snow in ungauged catchments" with fixed values
-    for the snow melt threshold and the degree day factorm
+    for the snow melt threshold and the degree day factor
 
     This function implements a simple snow hydrology model where:
     - Snow accumulates when temperature falls below a threshold
@@ -85,6 +85,7 @@ def calculate_snow_dynamics(
             snow_storage[month] = np.where(mask_snow, precip[month], 0.0)
             snow_melt[month] = 0.0
         else:
+            # all following months
             # === SNOWMELT ===
             # Calculate potential melt using degree-day method
             mask_melt = t_mean[month] >= t_melt
