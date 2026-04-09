@@ -116,6 +116,276 @@ def sum_per_month(
     return volume_sum_per_month
 
 
+def plot_mean_global_snow_storage_per_month(
+    *datasets, cell_area=None, mask=None, variable=None
+):
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    weights = cell_area * mask  # Gewichte: nur Land-Anteil der Zelle
+    for i, ds in enumerate(datasets):
+        mean_snow = (ds[variable] * weights).sum(dim=["lat", "lon"]) / weights.sum(
+            dim=["lat", "lon"]
+        )
+        mean_snow.plot(ax=ax, label=ds.case)
+    ax.set_title("Global Snow Storage Sum per Month", fontsize=11)
+    ax.set_ylabel("Mean Snow Storage [mm]")
+    ax.set_xlabel("Zeit")
+    ax.legend()
+    plt.tight_layout()
+    fig.savefig(
+        "./results/intercomparison/global_mean_snow_storage_per_month.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
+
+def plot_global_snow_sum_anomaly_per_month_percent(
+    *datasets, control=None, cell_area=None, mask=None, variable=None
+):
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    # Globale Summe für Control berechnen (1D: nur time)
+
+    for i, ds in enumerate(datasets):
+        # Globale Summe für das jeweilige Dataset berechnen (1D: nur time)
+        monthly_snow_sum_scenario = sum_per_month(
+            ds[variable], cell_area=cell_area, mask=mask
+        )
+        print(monthly_snow_sum_scenario, len(monthly_snow_sum_scenario))
+        monthly_snow_sum_control = sum_per_month(
+            control[variable], cell_area=cell_area, mask=mask
+        )
+        print(monthly_snow_sum_control, len(monthly_snow_sum_control))
+
+        monthly_anomaly_percent = (
+            (monthly_snow_sum_scenario - monthly_snow_sum_control)
+            / monthly_snow_sum_control
+            * 100
+        )
+
+        monthly_anomaly_percent.plot(ax=ax, label=ds.case)
+
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Snow Volume Anomaly [%]")
+    ax.set_title("Monthly Anomaly of Global Snow Sum Relative to Control", fontsize=11)
+    ax.legend()
+    ax.axhline(0, color="black", linewidth=0.8, linestyle="--")  # Nulllinie
+    plt.tight_layout()
+    fig.savefig(
+        "./results/intercomparison/global_snow_sum_anomaly_per_month_percent.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
+
+def plot_global_snow_sum_anomaly_per_month(
+    *datasets, control=None, cell_area=None, mask=None, variable=None
+):
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    print("Summe Anomalien")
+    for i, ds in enumerate(datasets):
+        monthly_snow_sum_ds = sum_per_month(
+            ds[variable], cell_area=cell_area, mask=mask
+        )
+        monthly_snow_sum_control = sum_per_month(
+            control[variable], cell_area=cell_area, mask=mask
+        )
+        anomaly = monthly_snow_sum_ds - monthly_snow_sum_control
+        anomaly.plot(ax=ax, label=ds.case)
+
+    ax.set_xlabel("Zeit")
+    ax.set_ylabel("Snow Volume [m³]")
+    ax.set_title("Monthly Anomaly of Global Snow Sum Relative to Control", fontsize=11)
+    ax.legend()
+    plt.tight_layout()
+    fig.savefig(
+        "./results/intercomparison/global_snow_sum_anomaly_per_month.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+
+
+def plot_combined_snow_analysis(
+    *datasets,
+    control=None,
+    cell_area=None,
+    mask=None,
+    variable=None,
+    save_path="./results/intercomparison/combined_snow_analysis.png",
+):
+    """
+    Erstellt einen kombinierten Plot mit 3 Subplots:
+      1. Globaler mittlerer Schneespeicher pro Monat
+      2. Monatliche absolute Anomalie des mittleren Schneespeichers relativ zum Control (mm)
+      3. Monatliche Anomalie der globalen Schneesumme (relativ, %)
+
+    X-Achse: statische Monatsnummern ab Simulationsstart.
+    """
+
+    fig, axes = plt.subplots(3, 1, figsize=(12, 14), sharex=True)
+
+    weights = cell_area * mask
+
+    # Control: flächengewichteter Mittelwert
+    mean_snow_control = (control[variable] * weights).sum(
+        dim=["lat", "lon"]
+    ) / weights.sum(dim=["lat", "lon"])
+
+    for ds in datasets:
+        da = ds[variable]
+        control_da = control[variable]
+        time_vals = da.time.values
+
+        # ---- Subplot 1: Mittlerer globaler Schneespeicher ----
+        mean_snow = (da * weights).sum(dim=["lat", "lon"]) / weights.sum(
+            dim=["lat", "lon"]
+        )
+        axes[0].plot(time_vals, mean_snow.values, label=ds.case)
+
+        # ---- Subplot 2: Absolute Anomalie des Mittelwerts (mm) ----
+        anomaly_mean = mean_snow - mean_snow_control
+        axes[1].plot(time_vals, anomaly_mean.values, label=ds.case)
+
+        # ---- Subplot 3: Relative Anomalie der globalen Summe (%) ----
+        monthly_sum_scenario = sum_per_month(da, cell_area=cell_area, mask=mask)
+        monthly_sum_control = sum_per_month(control_da, cell_area=cell_area, mask=mask)
+        anomaly_pct = (
+            (monthly_sum_scenario - monthly_sum_control) / monthly_sum_control * 100
+        )
+        axes[2].plot(time_vals, anomaly_pct.values, label=ds.case)
+
+    # Control im ersten Plot einzeichnen
+    axes[0].plot(
+        control[variable].time.values,
+        mean_snow_control.values,
+        label=control.case,
+        color="black",
+        linestyle="--",
+    )
+
+    # --- Statische X-Achse: Monatsnummern alle 12 Monate ---
+    ref_da = datasets[0][variable]
+    time_vals = ref_da.time.values
+    n_months = len(time_vals)
+
+    tick_positions = list(range(1, n_months, 12))
+    tick_labels = [str(i) for i in tick_positions]
+
+    for ax in axes:
+        ax.set_xticks([time_vals[i] for i in tick_positions])
+        ax.set_xticklabels([])
+        ax.tick_params(axis="x", which="minor", bottom=False)
+        ax.legend(fontsize=9)
+        ax.grid(True, alpha=0.3)
+
+    # Nur unterster Plot: X-Labels
+    axes[2].set_xticklabels(tick_labels, rotation=45, ha="right")
+    axes[2].set_xlabel("Time (months)", fontsize=11)
+
+    # --- Titel und Y-Achsen ---
+    axes[0].set_title("Global Mean Snow Storage per Month", fontsize=12)
+    axes[0].set_ylabel("Mean Snow Storage [mm]")
+
+    axes[1].set_title(
+        "Monthly Anomaly of Global Mean Snow Storage Relative to Control",
+        fontsize=12,
+    )
+    axes[1].set_ylabel("Mean Snow Storage Anomaly [mm]")
+    axes[1].axhline(0, color="black", linewidth=0.8, linestyle="--")
+
+    axes[2].set_title("Monthly Anomaly of Global Snow Sum (Relative)", fontsize=12)
+    axes[2].set_ylabel("Snow Volume Anomaly [%]")
+    axes[2].axhline(0, color="black", linewidth=0.8, linestyle="--")
+
+    fig.suptitle("Combined Global Snow Analysis", fontsize=14)
+    plt.tight_layout()
+    fig.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Plot saved to {save_path}")
+
+
+def months_between(dt1, dt2):
+    """Berechnet die Anzahl der Monate zwischen zwei cftime-Objekten."""
+    return (dt1.year - dt2.year) * 12 + (dt1.month - dt2.month)
+
+
+def plot_discharge(*dataarrays, labels=None, years=0):
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import cftime
+
+    # Labels validieren
+    if labels is None:
+        labels = ["Serie " + str(i + 1) for i in range(len(dataarrays))]
+    elif len(labels) != len(dataarrays):
+        raise ValueError(
+            "Anzahl der Labels ("
+            + str(len(labels))
+            + ") muss mit Anzahl der DataArrays ("
+            + str(len(dataarrays))
+            + ") übereinstimmen."
+        )
+
+    # Referenzzeitpunkt
+    sim_start = cftime.DatetimeNoLeap(5, 2, 1, 0, 0, 0, 0, has_year_zero=True)
+
+    # Zeitscheibe auswählen
+    if years:
+        start = cftime.DatetimeNoLeap(
+            5 + years[0], 2, 1, 0, 0, 0, 0, has_year_zero=True
+        )
+        end = cftime.DatetimeNoLeap(5 + years[1], 2, 1, 0, 0, 0, 0, has_year_zero=True)
+        time_slice = slice(start, end)
+        arrays_to_plot = [da.sel(time=time_slice) for da in dataarrays]
+        year_label = str(years[1] - years[0])
+        month_offset = months_between(start, sim_start)
+    else:
+        arrays_to_plot = list(dataarrays)
+        year_label = "All"
+        month_offset = 0
+
+    n_months = len(arrays_to_plot[0].time)
+    months = np.arange(n_months)
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+
+    # Vertikale Linien jeden Monat
+    for j in np.arange(0, n_months, 1):
+        ax.axvline(j, color="lightgrey", linewidth=0.2)
+
+    # Rote gestrichelte Linie bei Monat 4
+    ax.axvline(4, color="red", linewidth=0.5, linestyle="dashed")
+
+    # Dicke Linie bei jedem Januar
+    jan_ticks = np.arange(0, n_months, 12)
+    for j in jan_ticks:
+        ax.axvline(j, color="lightgrey", linewidth=0.5)
+
+    # X-Achse
+    ax.set_xticks(jan_ticks)
+    ax.set_xticklabels(
+        [f"Jan / Year {month_offset + i}" for i in range(len(jan_ticks))],
+        rotation=45,
+        size=5,
+        ha="right",
+    )
+
+    # Zeitreihen plotten
+    for da, label in zip(arrays_to_plot, labels):
+        ax.plot(months, da.values, linewidth=1.2, label=label)
+
+    ax.set_title(f"{river} - {year_label} Years")
+    ax.set_xlabel("Time (months)")
+    ax.set_ylabel("Discharge from Snow Melt (m3/s)")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
+
+
 def mean_per_year(da):
     return da.groupby("time.year").mean(dim="time")
 
@@ -741,35 +1011,6 @@ def plot_global_snow_sum_anomaly_per_year(
     plt.close(fig)
 
 
-def plot_global_snow_sum_anomaly_per_month(
-    *datasets, control=None, cell_area=None, mask=None, variable=None
-):
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-    print("Summe Anomalien")
-    for i, ds in enumerate(datasets):
-        monthly_snow_sum_ds = sum_per_month(
-            ds[variable], cell_area=cell_area, mask=mask
-        )
-        monthly_snow_sum_control = sum_per_month(
-            control[variable], cell_area=cell_area, mask=mask
-        )
-        anomaly = monthly_snow_sum_ds - monthly_snow_sum_control
-        anomaly.plot(ax=ax, label=ds.case)
-
-    ax.set_xlabel("Zeit")
-    ax.set_ylabel("Snow Volume [m³]")
-    ax.set_title("Monthly Anomaly of Global Snow Sum Relative to Control", fontsize=11)
-    ax.legend()
-    plt.tight_layout()
-    fig.savefig(
-        "./results/intercomparison/global_snow_sum_anomaly_per_month.png",
-        dpi=300,
-        bbox_inches="tight",
-    )
-    plt.close(fig)
-
-
 def plot_absolute_global_snow_sum_anomaly_per_month(
     *datasets, control=None, cell_area=None, mask=None, variable=None
 ):
@@ -823,46 +1064,6 @@ def plot_global_snow_sum_only_positive_anomaly_per_month(
     plt.tight_layout()
     fig.savefig(
         "./results/intercomparison/global_snow_sum_anomaly_only_positive.png",
-        dpi=300,
-        bbox_inches="tight",
-    )
-    plt.close(fig)
-
-
-def plot_global_snow_sum_anomaly_per_month_percent(
-    *datasets, control=None, cell_area=None, mask=None, variable=None
-):
-    fig, ax = plt.subplots(figsize=(8, 5))
-
-    # Globale Summe für Control berechnen (1D: nur time)
-
-    for i, ds in enumerate(datasets):
-        # Globale Summe für das jeweilige Dataset berechnen (1D: nur time)
-        monthly_snow_sum_scenario = sum_per_month(
-            ds[variable], cell_area=cell_area, mask=mask
-        )
-        print(monthly_snow_sum_scenario, len(monthly_snow_sum_scenario))
-        monthly_snow_sum_control = sum_per_month(
-            control[variable], cell_area=cell_area, mask=mask
-        )
-        print(monthly_snow_sum_control, len(monthly_snow_sum_control))
-
-        monthly_anomaly_percent = (
-            (monthly_snow_sum_scenario - monthly_snow_sum_control)
-            / monthly_snow_sum_control
-            * 100
-        )
-
-        monthly_anomaly_percent.plot(ax=ax, label=ds.case)
-
-    ax.set_xlabel("Time")
-    ax.set_ylabel("Snow Volume Anomaly [%]")
-    ax.set_title("Monthly Anomaly of Global Snow Sum Relative to Control", fontsize=11)
-    ax.legend()
-    ax.axhline(0, color="black", linewidth=0.8, linestyle="--")  # Nulllinie
-    plt.tight_layout()
-    fig.savefig(
-        "./results/intercomparison/global_snow_sum_anomaly_per_month_percent.png",
         dpi=300,
         bbox_inches="tight",
     )
@@ -1112,6 +1313,16 @@ if __name__ == "__main__":
         variable="snow_storage",
     )
 
+    plot_mean_global_snow_storage_per_month(
+        ds_47,
+        ds_16,
+        ds_150,
+        ds_ctrl,
+        cell_area=cell_area,
+        mask=mask,
+        variable="snow_storage",
+    )
+
     plot_global_snow_sum_anomaly_per_year(
         ds_47,
         ds_16,
@@ -1130,9 +1341,9 @@ if __name__ == "__main__":
     plot_global_snow_cover_anomaly_monthly(
         ds_47, ds_16, ds_150, control=ds_ctrl, cell_area=cell_area, mask=mask
     )
-    plot_global_snow_cover_anomaly_per_year(
-        ds_47, ds_16, ds_150, control=ds_ctrl, cell_area=cell_area, mask=mask
-    )
+    """plot_global_snow_cover_anomaly_per_year(
+        ds_47, ds_16, ds_150, ds_ctrl, cell_area=cell_area, mask=mask
+    )"""
 
     main_rivers = {
         "Rhine": [

@@ -101,7 +101,7 @@ for name, ds in datasets.items():
 timeseries = prepare_time_series(datasets["47"].snow_storage)
 print("Shape timeseries objekt", timeseries.shape)
 
-labels, km = time_series_analysis(timeseries, 5)
+"""labels, km = time_series_analysis(timeseries, 5)
 
 print("Anzahl Labels:", len(labels))
 
@@ -109,4 +109,4 @@ labels_xarray = convert_labels_to_xarray(labels, datasets["47"].snow_storage)
 
 datasets["47"]["5_clusters"] = labels_xarray
 
-datasets["47"].to_netcdf("./results/47/snow_47.nc")
+datasets["47"].to_netcdf("./results/47/snow_47.nc")"""

@@ -61,7 +61,7 @@ def time_series_analysis(timeseries_object: np.ndarray, n_clusters: int):
     # Perform time series k-means clustering
     km = TimeSeriesKMeans(
         n_clusters=n_clusters,
-        metric="dtw",
+        metric="euclidean",
         n_jobs=-1,  # use all cpu cores
         max_iter=50,
         random_state=42,
