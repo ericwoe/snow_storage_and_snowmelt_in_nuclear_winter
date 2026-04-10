@@ -559,10 +559,10 @@ def plot_hovmoeller_single(ds, mask=None):
     plt.show()
 
 
-def compute_zonal_mean_snow_storage(da, mask):
+def compute_zonal_mean_snow_storage(da, mask, cell_area):
     """
-    Berechnet den zonal gemittelten snow_storage pro Breitengrad und Zeitschritt,
-    gewichtet mit dem Landanteil (mask).
+    Berechnet den flächengewichteten zonal gemittelten snow_storage,
+    gewichtet mit Landanteil UND Zellgröße.
 
     Parameter
     ----------
@@ -570,20 +570,25 @@ def compute_zonal_mean_snow_storage(da, mask):
         snow_storage mit Dimensionen (time, lat, lon)
     mask : xarray.DataArray
         Landanteil pro Zelle (0 bis 1), Dimensionen (lat, lon)
+    cell_area : xarray.DataArray
+        Fläche jeder Gitterzelle [m²], Dimensionen (lat, lon)
 
     Returns
     -------
     zonal_mean : xarray.DataArray
-        Zonal gemittelter snow_storage (time, lat)
+        Flächengewichteter zonal gemittelter snow_storage (time, lat)
     """
-    weighted_sum = (da * mask).sum(dim="lon")
-    total_land = mask.sum(dim="lon")
-    zonal_mean = weighted_sum / total_land.where(total_land > 0)
+    weights = mask * cell_area
+
+    weighted_sum = (da * weights).sum(dim="lon")
+    total_weight = weights.sum(dim="lon")
+
+    zonal_mean = weighted_sum / total_weight.where(total_weight > 0)
     return zonal_mean
 
 
 def plot_hovmoeller_mean_snow_storage(
-    *datasets, mask=None, savedir="./results/allgemeine_muster"
+    *datasets, mask=None, cell_area=None, savedir="./results/allgemeine_muster"
 ):
     """
     Erstellt Hovmöller-Diagramme des zonal gemittelten snow_storage
@@ -607,7 +612,7 @@ def plot_hovmoeller_mean_snow_storage(
     # Zonal gemittelte Werte vorab berechnen
     all_zonal = []
     for ds in datasets:
-        zonal = compute_zonal_mean_snow_storage(ds.snow_storage, mask)
+        zonal = compute_zonal_mean_snow_storage(ds.snow_storage, mask, cell_area)
         all_zonal.append(zonal)
 
     # Gemeinsames vmax aus 95. Perzentil
@@ -1399,4 +1404,14 @@ if __name__ == "__main__":
             "47 Tg",
             "150 Tg",
         ],
+    )
+
+    plot_hovmoeller_mean_snow_storage(
+        ds_16,
+        ds_47,
+        ds_150,
+        control=ds_ctrl,
+        mask=mask,
+        cell_area=cell_area,
+        savedir="./results/intercomparison/hovmoeller/mean_snow_storage",
     )
