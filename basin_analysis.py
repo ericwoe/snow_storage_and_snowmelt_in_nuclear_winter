@@ -4,35 +4,23 @@ import numpy as np
 import cftime
 import matplotlib.pyplot as plt
 from src.preprocessing.land_mask import create_mask
+from snow_analysis import compute_grid_cell_area
 
-plt.style.use(
+"""plt.style.use(
     "https://raw.githubusercontent.com/allfed/ALLFED-matplotlib-style-sheet/main/ALLFED.mplstyle"
-)
+)"""
 
 # noch die Plots für Abfluss des Einzugsgebiets ergänzen
 
 
-def convert_mm_month_to_discharge_m3_month(da, river_mask):
-    R = 6371000  # Earthradius in m
-    lat_rad = np.deg2rad(da.lat.values)
-    lon_rad = np.deg2rad(da.lon.values)
-
-    # Gitterabstände in Radiant
-    dlat = np.abs(lat_rad[1] - lat_rad[0])
-    dlon = np.abs(lon_rad[1] - lon_rad[0])
-
-    # Zellflächen (lat, lon) → 2D Array
-    cell_area = (R**2) * dlat * dlon * np.cos(lat_rad)[:, None]  # Shape (96,144)
-
+def convert_mm_month_to_discharge_m3_month(da, river_mask, cell_area):
     snow_melt_m = da / 1000  # mm → m
-
     return snow_melt_m * cell_area * river_mask
 
 
-def monthly_discharge_sum(da):
+def monthly_discharge_sum_m3(da):
     total_volume_monthly = da.sum(dim=["lat", "lon"])
-    seconds_in_month = 30 * 24 * 3600  # grob, alternativ kalendarisch je Monat
-    return total_volume_monthly / seconds_in_month
+    return total_volume_monthly
 
 
 def plot_monthly_discharge(*dataarrays, labels=None, years=0):
@@ -104,7 +92,6 @@ def plot_monthly_discharge(*dataarrays, labels=None, years=0):
     ax.legend()
     plt.tight_layout()
     plt.show()
-    print(arrays_to_plot)
 
 
 def months_between(dt1, dt2):
@@ -272,47 +259,71 @@ def weighted_monthly_mean(da, mask):
     return (da * mask).sum(dim=["lat", "lon"]) / mask.sum(dim=["lat", "lon"])
 
 
-def plot_annual_sum(da_150, da_control):
-    monthly_150 = weighted_monthly_mean(da_150, river_mask)
-    monthly_control = weighted_monthly_mean(da_control, river_mask)
+def plot_annual_sums_two_bars(
+    scenario, control, labels=["Scenario", "Control"], ax=None
+):
+    n_years = len(scenario)
+    year_indices = np.arange(n_years)
 
-    annual_150 = annual_sum(monthly_150)
-    annual_control = annual_sum(monthly_control)
+    bar_width = 0.4
+    offset = bar_width / 2
 
-    # Neue Figur und Achse erzeugen
-    fig, ax = plt.subplots(figsize=(8, 5))
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 5))
+        standalone = True
+    else:
+        standalone = False
 
-    # Beide Zeitreihen in dieselbe Achse plotten
-    annual_150.plot(ax=ax, label="150 Tg Szenario")
-    annual_control.plot(ax=ax, label="Control Szenario")
+    ax.bar(
+        year_indices - offset,
+        scenario.values,
+        width=bar_width,
+        color="steelblue",
+        alpha=0.85,
+        label=labels[0],
+    )
+    ax.bar(
+        year_indices + offset,
+        control.values,
+        width=bar_width,
+        color="grey",
+        alpha=0.85,
+        label=labels[1],
+    )
 
-    # Achsenbeschriftung (optional, aber empfehlenswert)
-    ax.set_title(river)
-    ax.set_xlabel("Time (years)")
-    ax.set_ylabel("Snow_Melt (mm/year)")
+    ax.axhline(0, color="black", linewidth=0.8)
+    ax.set_xticks(year_indices)
+    ax.set_xticklabels(year_indices, fontsize=5)
+    ax.set_xlabel("Year")
+    ax.set_ylabel("Annual Snowmelt [m3]")
+    ax.legend(fontsize=8)
+    ax.set_title(f"{river}")
 
-    # Legende hinzufügen
-    ax.legend()
-
-    # Layout verbessern
-    plt.tight_layout()
-    plt.show()
+    if standalone:
+        plt.tight_layout()
+        plt.show()
 
 
-def plot_annual_anomaly(scenario, control, ax=None):
+def plot_annual_anomaly(annual_scenario_ts, annual_control_ts, ax=None):
+    # annual_control_ts kann entweder die gemittelte Referenz (Skalar)
+    # oder die vollständige Zeitreihe sein – wir brauchen beides
+    # Daher: Referenzwert = Mittelwert, SD aus der vollen Zeitreihe
+    control_mean = annual_control_ts.mean(dim="year")
+    control_std = annual_control_ts.std(dim="year")
 
-    # Anomalie in Prozent
-    anomaly = (scenario - control) / control * 100
+    # SD in Prozent des Mittelwerts
+    sd_pct = (control_std / control_mean * 100).values
 
+    # Anomalie in Prozent relativ zum Mittelwert
+    anomaly = (annual_scenario_ts - control_mean) / control_mean * 100
+    print(f"{river} Max:{anomaly.values.max()}, Min: {anomaly.values.min()}")
     n_years = len(anomaly)
     year_indices = np.arange(n_years)
     values = anomaly.values
 
-    # Positive und negative Werte trennen
     pos_vals = np.where(values >= 0, values, 0)
     neg_vals = np.where(values < 0, values, 0)
 
-    # Neue Figur nur wenn kein ax übergeben wurde
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 5))
         fig.subplots_adjust(left=0.06)
@@ -320,17 +331,31 @@ def plot_annual_anomaly(scenario, control, ax=None):
     else:
         standalone = False
 
+    # ±1 SD als gestrichelte Linien
+    ax.axhline(
+        sd_pct,
+        color="grey",
+        linewidth=1.0,
+        linestyle="--",
+        zorder=0,
+    )
+    ax.axhline(
+        -sd_pct,
+        color="grey",
+        linewidth=1.0,
+        linestyle="--",
+        zorder=0,
+    )
+
     ax.bar(year_indices, pos_vals, color="steelblue", alpha=0.85)
     ax.bar(year_indices, neg_vals, color="steelblue", alpha=0.85)
-
     ax.axhline(0, color="black", linewidth=0.8)
+
     ax.set_xticks(year_indices)
-    ax.set_xticklabels(
-        [str(y) for y in anomaly.year.values], rotation=45, ha="right", fontsize=8
-    )
+    ax.set_xticklabels(year_indices, fontsize=5)
     ax.set_xlabel("Year")
-    ax.set_ylabel("Anomalie (%)")
-    ax.set_title(f"{river} – Jährliche Anomalie der Abflussmenge [m3] zum Control")
+    ax.set_ylabel("Snowmelt anomaly (%)")
+    ax.set_title(f"{river}")
 
     if standalone:
         plt.tight_layout()
@@ -370,7 +395,7 @@ def plot_monthly_bars(scenario, control):
     # X-Achse: Januar-Ticks mit Jahreslabel
     ax.set_xticks(jan_ticks)
     ax.set_xticklabels(
-        [f"Jan / Year {i}" for i in range(len(jan_ticks))],
+        [f"Jan. / Year {i}" for i in range(len(jan_ticks))],
         rotation=45,
         ha="right",
         fontsize=7,
@@ -378,24 +403,32 @@ def plot_monthly_bars(scenario, control):
     ax.tick_params(axis="x", which="minor", bottom=False)
 
     ax.set_xlabel("Time (months)")
-    ax.set_ylabel("Schneeschmelze (m³/s)")
-    ax.set_title(f"{river} – Abfluss durch Schneeschmelze")
+    ax.set_ylabel("Discharge [m³/s]")
+    ax.set_title(f"{river}")
     ax.legend()
     plt.tight_layout()
-    plt.show()
+    plt.savefig(f"./results/basin/{river}_monthly_bars.png", dpi=300)
+    plt.close(fig)
 
 
 def plot_monthly_anomaly(scenario, control):
     import matplotlib.pyplot as plt
     import numpy as np
 
-    n_months = len(scenario)
-    x = np.arange(n_months)
+    anomaly = scenario - control
+
+    n_months = len(anomaly)
+    month_indices = np.arange(n_months)
+    values = anomaly.values
+
+    # Positive und negative Werte trennen
+    pos_vals = np.where(values >= 0, values, 0)
+    neg_vals = np.where(values < 0, values, 0)
 
     fig, ax = plt.subplots(figsize=(8, 5))
 
     # Vertikale Hilfslinien jeden Monat
-    for j in x:
+    for j in month_indices:
         ax.axvline(j, color="lightgrey", linewidth=0.2)
 
     # Dickere Linie bei jedem Januar
@@ -405,9 +438,16 @@ def plot_monthly_anomaly(scenario, control):
 
     # Control nach unten (negiert), Szenario nach oben
     ax.bar(
-        x, -control.values, width=1.0, color="steelblue", alpha=0.85, label="Control"
+        month_indices,
+        pos_vals,
+        width=1.0,
+        color="steelblue",
+        alpha=0.85,
+        label="Control",
     )
-    ax.bar(x, scenario.values, width=1.0, color="tomato", alpha=0.85, label="Szenario")
+    ax.bar(
+        month_indices, neg_vals, width=1.0, color="tomato", alpha=0.85, label="Szenario"
+    )
 
     ax.axhline(0, color="black", linewidth=0.8)
 
@@ -426,11 +466,11 @@ def plot_monthly_anomaly(scenario, control):
     ax.tick_params(axis="x", which="minor", bottom=False)
 
     ax.set_xlabel("Time (months)")
-    ax.set_ylabel("Schneeschmelze (m³/s)")
-    ax.set_title(f"{river} – Abfluss durch Schneeschmelze")
-    ax.legend()
+    ax.set_ylabel("Snowmelt anomaly [m³]")
+    ax.set_title(f"{river}")
     plt.tight_layout()
-    plt.show()
+    plt.savefig(f"./results/basin/{river}_monthly_anomaly.png", dpi=300)
+    plt.close(fig)
 
 
 def plot_weighted_monthly_mean(da_river_150, da_river_ctrl, years=0):
@@ -474,12 +514,36 @@ def plot_weighted_monthly_mean(da_river_150, da_river_ctrl, years=0):
     plt.show()
 
 
-if __name__ == "__main__":
-    main_rivers = {
-        "Rhine": [
+""""Rhine": [
             "./data/HydroBasins/hybas_eu_lev01-12_v1c/hybas_eu_lev04_v1c.shp",
             2040023010,
-        ],
+        ],"""
+
+""""Jennisei": [
+            "./data/HydroBasins/hybas_si_lev01-12_v1c/hybas_si_lev04_v1c.shp",
+            3040004740,
+        ],"""
+
+""""Nile": [
+            "./data/HydroBasins/hybas_af_lev01-12_v1c/hybas_af_lev04_v1c.shp",
+            1040034260,
+        ],"""
+""""Mekong": [
+            "./data/HydroBasins/hybas_as_lev01-12_v1c/hybas_as_lev04_v1c.shp",
+            4040017020,
+        ]"""
+
+""""Indus": [
+            "./data/HydroBasins/hybas_as_lev01-12_v1c/hybas_as_lev04_v1c.shp",
+            4040033640,
+        ],  # sieht anders aus als im Internet, aber laut HydroBasins ist das der Indus"""
+"""        "Jangtsekiang": [
+            "./data/HydroBasins/hybas_as_lev01-12_v1c/hybas_as_lev04_v1c.shp",
+            4040009880,
+        ],  # sieht anders aus als im Internet, aber laut HydroBasins ist das der Jangtsekiang"""
+
+if __name__ == "__main__":
+    main_rivers = {
         "Donau": [
             "./data/HydroBasins/hybas_eu_lev01-12_v1c/hybas_eu_lev04_v1c.shp",
             2040008490,
@@ -488,37 +552,17 @@ if __name__ == "__main__":
             "./data/HydroBasins/hybas_as_lev01-12_v1c/hybas_as_lev04_v1c.shp",
             4040025450,
         ],
-        "Indus": [
-            "./data/HydroBasins/hybas_as_lev01-12_v1c/hybas_as_lev04_v1c.shp",
-            4040033640,
-        ],  # sieht anders aus als im Internet, aber laut HydroBasins ist das der Indus
         "Yellow River": [
             "./data/HydroBasins/hybas_as_lev01-12_v1c/hybas_as_lev04_v1c.shp",
             4040007850,
-        ],
-        "Jangtsekiang": [
-            "./data/HydroBasins/hybas_as_lev01-12_v1c/hybas_as_lev04_v1c.shp",
-            4040009880,
-        ],  # sieht anders aus als im Internet, aber laut HydroBasins ist das der Jangtsekiang
-        "Mekong": [
-            "./data/HydroBasins/hybas_as_lev01-12_v1c/hybas_as_lev04_v1c.shp",
-            4040017020,
         ],
         "Tigris - Euphrates": [
             "./data/HydroBasins/hybas_eu_lev01-12_v1c/hybas_eu_lev04_v1c.shp",
             2040073570,
         ],
-        "Jennisei": [
-            "./data/HydroBasins/hybas_si_lev01-12_v1c/hybas_si_lev04_v1c.shp",
-            3040004740,
-        ],
         "Ob": [
             "./data/HydroBasins/hybas_si_lev01-12_v1c/hybas_si_lev04_v1c.shp",
             3040001840,
-        ],
-        "Nile": [
-            "./data/HydroBasins/hybas_af_lev01-12_v1c/hybas_af_lev04_v1c.shp",
-            1040034260,
         ],
         "Mississippi": [
             "./data/HydroBasins/hybas_na_lev01-12_v1c/hybas_na_lev04_v1c.shp",
@@ -531,6 +575,8 @@ if __name__ == "__main__":
     ds_16 = xr.open_dataset("./results/16/snow_16.nc")
     ds_control = xr.open_dataset("./results/Control/snow_control.nc")
 
+    cell_area = compute_grid_cell_area(ds_control.snow_storage)  # km2
+
     annual_anomaly_data = (
         {}
     )  # {river_name: (dsc_45_annual_sum, dsc_control_annual_sum)}
@@ -542,34 +588,66 @@ if __name__ == "__main__":
         river_basin_diss = river_basin.dissolve()
         # Fraction of Raster Cells in River Basin
         river_mask = create_mask(ds_150, river_basin_diss)
-        # All cells inside Basin
+
+        # Select all cells inside Basin
         river_150 = ds_150.snow_melt.where(river_mask > 0)
         river_control = ds_control.snow_melt.where(river_mask > 0)
         river_16 = ds_16.snow_melt.where(river_mask > 0)
         river_47 = ds_47.snow_melt.where(river_mask > 0)
-        river_47_ss = ds_47.snow_storage.where(river_mask > 0)
-        river_control_ss = ds_control.snow_storage.where(river_mask > 0)
 
-        dsc_150 = convert_mm_month_to_discharge_m3_month(river_150, river_mask)
-        dsc_control = convert_mm_month_to_discharge_m3_month(river_control, river_mask)
-        dsc_47 = convert_mm_month_to_discharge_m3_month(river_47, river_mask)
-        dsc_16 = convert_mm_month_to_discharge_m3_month(river_16, river_mask)
-        dsc_47_ss = convert_mm_month_to_discharge_m3_month(river_47_ss, river_mask)
-        dsc_control_ss = convert_mm_month_to_discharge_m3_month(
-            river_control_ss, river_mask
+        # Snow Storage in River Basin
+        river_47_storage = ds_47.snow_storage.where(river_mask > 0)
+        river_control_storage = ds_control.snow_storage.where(river_mask > 0)
+
+        # convert from mm/month to discharge in m3/month
+        dsc_150 = convert_mm_month_to_discharge_m3_month(
+            river_150, river_mask, cell_area
+        )
+        dsc_control = convert_mm_month_to_discharge_m3_month(
+            river_control, river_mask, cell_area
+        )
+        dsc_47 = convert_mm_month_to_discharge_m3_month(river_47, river_mask, cell_area)
+        dsc_16 = convert_mm_month_to_discharge_m3_month(river_16, river_mask, cell_area)
+        storage_47 = convert_mm_month_to_discharge_m3_month(
+            river_47_storage, river_mask, cell_area
+        )
+        storage_control = convert_mm_month_to_discharge_m3_month(
+            river_control_storage, river_mask, cell_area
         )
 
-        dsc_sum_150 = monthly_discharge_sum(dsc_150)
-        dsc_sum_47 = monthly_discharge_sum(dsc_47)
-        dsc_sum_16 = monthly_discharge_sum(dsc_16)
-        dsc_sum_control = monthly_discharge_sum(dsc_control)
-        dsc_sum_47_ss = monthly_discharge_sum(dsc_47_ss)
-        dsc_sum_control_ss = monthly_discharge_sum(dsc_control_ss)
+        # Monthly Discharge Sum in m3/month
+        dsc_sum_150 = monthly_discharge_sum_m3(dsc_150)
+        dsc_sum_47 = monthly_discharge_sum_m3(dsc_47)
+        dsc_sum_16 = monthly_discharge_sum_m3(dsc_16)
+        dsc_sum_control = monthly_discharge_sum_m3(dsc_control)
 
-        dsc_45_annual_sum = annual_sum(dsc_47.sum(dim=["lat", "lon"]))
-        dsc_control_annual_sum = annual_sum(dsc_control.sum(dim=["lat", "lon"]))
+        # Monthly Discharge in m3/s
+        dsc_150_m3_s = dsc_sum_150 / (
+            ds_150["days_in_month"].isel(lat=0, lon=0) * 24 * 3600
+        )
+        dsc_47_m3_s = dsc_sum_47 / (
+            ds_47["days_in_month"].isel(lat=0, lon=0) * 24 * 3600
+        )
+        dsc_16_m3_s = dsc_sum_16 / (
+            ds_16["days_in_month"].isel(lat=0, lon=0) * 24 * 3600
+        )
+        dsc_control_m3_s = dsc_sum_control / (
+            ds_control["days_in_month"].isel(lat=0, lon=0) * 24 * 3600
+        )
 
-        annual_anomaly_data[river] = (dsc_45_annual_sum, dsc_control_annual_sum)
+        # Monthly Snow Storage Sum in m3/month
+        storage_sum_47_m3 = monthly_discharge_sum_m3(storage_47)
+        storage_sum_control_m3 = monthly_discharge_sum_m3(storage_control)
+
+        # Annual Discharge Sum in m3/year
+        dsc_47_annual_sum = annual_sum(dsc_sum_47)
+        dsc_control_annual_sum = annual_sum(dsc_sum_control)
+
+        # Mean Annual Sum in m3/year -> um Schwankung zu reduzieren
+        dsc_control_mean_annual_sum = dsc_control_annual_sum.mean(dim="year")
+
+        # Annual Anomaly in m3/year
+        annual_anomaly_data[river] = (dsc_47_annual_sum, dsc_control_annual_sum)
 
         """plot_discharge(
             dsc_sum_47,
@@ -588,10 +666,21 @@ if __name__ == "__main__":
             years=[0, 15],
         )
         plot_annual_anomaly(dsc_45_annual_sum, dsc_control_annual_sum)
-        plot_annual_anomaly(dsc_45_annual_sum, dsc_control_annual_sum.mean(dim="year"))
+        plot_annual_anomaly(dsc_45_annual_sum, dsc_control_annual_sum.mean(dim="year"))"""
+        print(
+            f"{river} - Szenario 32k: {np.sum(dsc_47_m3_s.values > 32000)}, Control 32k: {np.sum(dsc_control_m3_s.values > 32000)} \n Szenario 25k: {np.sum(dsc_47_m3_s.values > 25000)}, Control 25k: {np.sum(dsc_control_m3_s.values > 25000)}"
+        )
+        print(
+            f"{river} - Szenario 32k: {np.sum(dsc_47_m3_s.values > 30000)}, Control 32k: {np.sum(dsc_control_m3_s.values > 30000)}"
+        )
 
-        # plot_monthly_anomaly(dsc_sum_47, dsc_sum_control)
-        plot_monthly_bars(dsc_sum_47, dsc_sum_control)"""
+        print(
+            dsc_47_m3_s[dsc_47_m3_s.values > 32000],
+            dsc_control_m3_s[dsc_control_m3_s.values > 32000],
+        )
+        plot_monthly_anomaly(dsc_sum_47, dsc_sum_control)
+        # plot_monthly_bars(dsc_sum_47, dsc_sum_control)
+        plot_monthly_bars(dsc_47_m3_s, dsc_control_m3_s)
 
     n_rivers = len(annual_anomaly_data)
     ncols = 3
@@ -612,5 +701,26 @@ if __name__ == "__main__":
     for ax in axes_flat[n_rivers:]:
         ax.set_visible(False)
 
-    fig.suptitle("Jährliche Anomalie der Abflussspende", fontsize=11)
-    plt.show()
+    # fig.suptitle("Jährliche Anomalie der Abflussspende", fontsize=11)
+    plt.tight_layout()
+    plt.savefig("./results/river_basin_annual_anomalies.png", dpi=300)
+    plt.close(fig)
+
+    fig2, axes2 = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(ncols * 6, nrows * 5),
+        constrained_layout=True,
+    )
+    axes_flat2 = axes2.flatten()
+
+    for ax, (river, (scenario, control)) in zip(
+        axes_flat2, annual_anomaly_data.items()
+    ):
+        plot_annual_sums_two_bars(scenario, control, ax=ax)
+
+    for ax in axes_flat2[n_rivers:]:
+        ax.set_visible(False)
+
+    plt.savefig("./results/river_basin_annual_sums.png", dpi=300)
+    plt.close(fig2)

@@ -10,6 +10,8 @@ import cartopy.feature as cfeature
 import matplotlib.colors as mcolors
 import math
 from snow_analysis import compute_grid_cell_area
+from matplotlib.ticker import MultipleLocator
+import matplotlib.lines as mlines
 
 
 plt.style.use(
@@ -219,6 +221,120 @@ def plot_cluster_timeseries(
     plt.close()
 
 
+def plot_cluster_timeseries_ctrl(
+    timeseries: np.ndarray,
+    timeseries_ctrl: np.ndarray,  # neu: shape (n_land_cells, 180)
+    labels: np.ndarray,
+    cell_areas: np.ndarray,
+    fractions: np.ndarray,
+    n_clusters: int = 5,
+    title: str = None,
+    parameter_name: str = "Snow Storage (mm)",
+    save_path: str = "./results/clustering",
+):
+    import matplotlib.lines as mlines
+
+    fig, axes = plt.subplots(
+        nrows=n_clusters,
+        ncols=1,
+        sharey=False,
+        sharex=False,
+        figsize=(16, 4 * n_clusters),
+        constrained_layout=True,
+    )
+
+    if n_clusters == 1:
+        axes = [axes]
+
+    for cluster in range(n_clusters):
+        cluster_mask = labels == cluster
+        cluster_ts = timeseries[cluster_mask]
+        cluster_ts_ctrl = timeseries_ctrl[cluster_mask]  # neu
+
+        effective_areas = cell_areas * fractions
+        cluster_weights = effective_areas[cluster_mask]
+
+        ax = axes[cluster]
+
+        for q in np.arange(0.1, 0.6, 0.1):
+            q_up = weighted_quantile(cluster_ts, cluster_weights, 1 - q)
+            q_down = weighted_quantile(cluster_ts, cluster_weights, q)
+            ax.fill_between(
+                x=range(cluster_ts.shape[1]),
+                y1=q_down,
+                y2=q_up,
+                color="#3A6A91",
+                alpha=q * 2,
+            )
+
+        # Gewichteter Median Szenario
+        median = weighted_quantile(cluster_ts, cluster_weights, 0.5)
+        ax.plot(range(cluster_ts.shape[1]), median, color="black", linewidth=2)
+
+        # Gewichteter Median Control – neu
+        median_ctrl = weighted_quantile(cluster_ts_ctrl, cluster_weights, 0.5)
+        ax.plot(
+            range(cluster_ts_ctrl.shape[1]),
+            median_ctrl,
+            color="red",
+            linewidth=1.5,
+            linestyle="--",
+            label="Control median",
+        )
+
+        cluster_area_fraction = cluster_weights.sum() / cell_areas.sum() * 100
+        ax.set_title(
+            f"Cluster {cluster}\n({cluster_area_fraction:.1f}% of total area) - {cluster_ts.shape[0]} cells"
+        )
+        ax.set_xlabel("Months")
+
+        if cluster == 0:
+            ax.set_ylabel(parameter_name)
+            patches_list = []
+            patches_list.append(mpatches.Patch(color="black", label="Median"))
+            patches_list.append(
+                mlines.Line2D(
+                    [], [], color="red", linestyle="--", label="Control median"
+                )
+            )
+            patches_list.append(
+                mpatches.Patch(color="#3A6A91", label="Q40 - Q60", alpha=0.8)
+            )
+            patches_list.append(
+                mpatches.Patch(color="#3A6A91", label="Q30 - Q70", alpha=0.6)
+            )
+            patches_list.append(
+                mpatches.Patch(color="#3A6A91", label="Q20 - Q80", alpha=0.4)
+            )
+            patches_list.append(
+                mpatches.Patch(color="#3A6A91", label="Q10 - Q90", alpha=0.2)
+            )
+            ax.legend(handles=patches_list, loc="best")
+
+        ax.grid(True, alpha=0.3)
+
+    for i, ax in enumerate(axes):
+        ax.text(
+            0.02,
+            0.98,
+            f"{chr(97+i)})",
+            transform=ax.transAxes,
+            fontsize=12,
+            verticalalignment="top",
+            horizontalalignment="left",
+            color="black",
+            weight="bold",
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.7),
+        )
+
+    plt.savefig(
+        os.path.join(save_path, f"timeseries_{n_clusters}_clusters_{title}_ctrl.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close()
+
+
 def plot_cluster_spatial(
     da: xr.DataArray,
     labels: np.ndarray,  # shape: (n_land_cells,)
@@ -402,9 +518,19 @@ def plot_cluster_combined(
             f"{cluster_ts.shape[0]/len(labels)*100:.1f}%)",
             fontsize=11,
         )
-        ax.set_xlabel("Months")
-        ax.set_ylabel(parameter_name)
-        ax.grid(True, alpha=0.3)
+        jan_ticks = np.arange(0, timeseries.shape[1], 12)
+        ax.set_xticks(jan_ticks)
+        ax.set_xticklabels(
+            [f"Jan / Year {i}" for i in range(len(jan_ticks))],
+            rotation=45,
+            size=5,
+            ha="right",
+        )
+        ax.xaxis.set_minor_locator(MultipleLocator(1))
+        ax.grid(which="major", axis="x", linewidth=0.8, color="gray", alpha=0.5)
+        ax.grid(which="minor", axis="x", linewidth=0.3, color="gray", alpha=0.3)
+        ax.grid(which="major", axis="y", linewidth=0.5, color="gray", alpha=0.3)
+        ax.set_xlabel("Time")
 
         # Subplot-Label a), b), …
         ax.text(
@@ -455,13 +581,16 @@ if __name__ == "__main__":
         "all": [ds_ctrl, ds_16, ds_47, ds_150],
     }
 
-    fraction_mask = xr.open_dataarray("./data/interim/land_mask_neu.nc")
+    fraction_mask = xr.open_dataarray("./data/interim/alte Masken/land_mask_neu.nc")
     # Calculate cell area for weighting
     cell_area = compute_grid_cell_area(ds_47.snow_storage)
     # Create land mask for extracting cell areas of only land cells
     land_mask = ~np.isnan(ds_47.snow_storage.isel(time=0))
     cell_area_1d = cell_area.values[land_mask.values]  # shape: (n_land_cells,)
     fractions_1d = fraction_mask.values[land_mask.values]  # shape: (n_land_cells,)
+
+    timeseries_ctrl = prepare_time_series(ds_ctrl.snow_storage)
+    timeseries_ctrl = timeseries_ctrl.squeeze()
 
     for folder in sorted(os.listdir(base_path)):
         folder_path = os.path.join(base_path, folder)
@@ -499,6 +628,16 @@ if __name__ == "__main__":
                 print(f"Dimensionen von labels: {labels.shape}")
                 plot_cluster_timeseries(
                     timeseries,
+                    labels,
+                    cell_area_1d,
+                    fractions_1d,
+                    n_clusters=i,
+                    parameter_name="Snow Storage (mm)",
+                    save_path=folder_path,
+                )
+                plot_cluster_timeseries(
+                    timeseries,
+                    timeseries_ctrl,
                     labels,
                     cell_area_1d,
                     fractions_1d,

@@ -61,7 +61,7 @@ def time_series_analysis(timeseries_object: np.ndarray, n_clusters: int):
     # Perform time series k-means clustering
     km = TimeSeriesKMeans(
         n_clusters=n_clusters,
-        metric="euclidean",
+        metric="dtw",
         n_jobs=-1,  # use all cpu cores
         max_iter=50,
         random_state=42,
@@ -171,15 +171,21 @@ def elbow_method(timeseries, max_clusters):
 
 
 if __name__ == "__main__":
-    ds_150 = xr.open_dataset("./results/150/snow_150.nc")
+    ds_47 = xr.open_dataset("./results/47/snow_47.nc")
     ds_control = xr.open_dataset("./results/Control/snow_control.nc")
 
-    da = ds_control.snow_storage
+    da = ds_47.snow_storage
     timeseries = prepare_time_series(da)
+    print(timeseries.shape)
 
     # Subset for Elbow Method
     # subset_size = int(0.2 * 5661)  # ca. 1248 Reihen
     # indices = np.random.choice(5661, subset_size, replace=False)
     # timeseries_subset = timeseries_scaled[indices]
 
-    result_inertias = elbow_method(timeseries, 10)
+    labels, km = time_series_analysis(timeseries, n_clusters=5)
+    np.save(
+        "./results/clustering/47_Tg_dtw/5_cluster_labels.npy", labels
+    )  # Labels als NumPy-Array
+    with open("./results/clustering/47_Tg_dtw/kmeans_model_5_clusters.pkl", "wb") as f:
+        pickle.dump(km, f)  # Modell mit pickleresults/clustering/47_Tg_dtw
