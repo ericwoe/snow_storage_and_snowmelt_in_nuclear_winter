@@ -174,7 +174,7 @@ if __name__ == "__main__":
     ds_47 = xr.open_dataset("./results/47/snow_47.nc")
     ds_control = xr.open_dataset("./results/Control/snow_control.nc")
 
-    da = ds_47.snow_storage
+    da = ds_control.snow_storage
     timeseries = prepare_time_series(da)
     print(timeseries.shape)
 
@@ -183,9 +183,11 @@ if __name__ == "__main__":
     # indices = np.random.choice(5661, subset_size, replace=False)
     # timeseries_subset = timeseries_scaled[indices]
 
-    labels, km = time_series_analysis(timeseries, n_clusters=5)
+    labels, km = time_series_analysis(timeseries, n_clusters=3)
     np.save(
-        "./results/clustering/47_Tg_dtw/5_cluster_labels.npy", labels
+        "./results/clustering/Control_scenario_dtw/3_cluster_labels.npy", labels
     )  # Labels als NumPy-Array
-    with open("./results/clustering/47_Tg_dtw/kmeans_model_5_clusters.pkl", "wb") as f:
-        pickle.dump(km, f)  # Modell mit pickleresults/clustering/47_Tg_dtw
+    with open(
+        "./results/clustering/Control_scenario_dtw/kmeans_model_3_clusters.pkl", "wb"
+    ) as f:
+        pickle.dump(km, f)  # Modell mit pickle

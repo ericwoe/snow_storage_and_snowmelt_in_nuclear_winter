@@ -269,7 +269,13 @@ def plot_cluster_timeseries_ctrl(
 
         # Gewichteter Median Szenario
         median = weighted_quantile(cluster_ts, cluster_weights, 0.5)
-        ax.plot(range(cluster_ts.shape[1]), median, color="black", linewidth=2)
+        ax.plot(
+            range(cluster_ts.shape[1]),
+            median,
+            color="black",
+            linewidth=2,
+            label="Median 47 Tg",
+        )
 
         # Gewichteter Median Control – neu
         median_ctrl = weighted_quantile(cluster_ts_ctrl, cluster_weights, 0.5)
@@ -279,7 +285,7 @@ def plot_cluster_timeseries_ctrl(
             color="red",
             linewidth=1.5,
             linestyle="--",
-            label="Control median",
+            label="Median Control",
         )
 
         cluster_area_fraction = cluster_weights.sum() / cell_areas.sum() * 100
@@ -291,12 +297,12 @@ def plot_cluster_timeseries_ctrl(
         if cluster == 0:
             ax.set_ylabel(parameter_name)
             patches_list = []
-            patches_list.append(mpatches.Patch(color="black", label="Median"))
             patches_list.append(
                 mlines.Line2D(
-                    [], [], color="red", linestyle="--", label="Control median"
+                    [], [], color="red", linestyle="--", label="Median Control"
                 )
             )
+            patches_list.append(mpatches.Patch(color="black", label="Median 47 Tg"))
             patches_list.append(
                 mpatches.Patch(color="#3A6A91", label="Q40 - Q60", alpha=0.8)
             )
