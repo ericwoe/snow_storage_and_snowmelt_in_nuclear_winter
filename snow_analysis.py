@@ -220,6 +220,10 @@ def plot_combined_snow_analysis(
 ):
     from matplotlib.ticker import MultipleLocator
 
+    plt.style.use(
+        "https://raw.githubusercontent.com/allfed/ALLFED-matplotlib-style-sheet/main/ALLFED.mplstyle"
+    )
+
     fig, axes = plt.subplots(3, 1, figsize=(12, 14), sharex=True)
 
     # Standardfarben falls keine übergeben
@@ -260,6 +264,11 @@ def plot_combined_snow_analysis(
         anomaly_mean = mean_snow - mean_snow_control
         axes[1].plot(x, anomaly_mean.values, label=f"{label} Tg BC", color=color)
 
+        print(
+            anomaly_mean.max(keep_attrs=True),
+            f'{ds.case} Zeitpunkt d. Maximums: {anomaly_mean.idxmax(dim="time")}',
+        )
+
         snow = da > 0
 
         # Schneebedeckte Landfläche pro Monat
@@ -273,6 +282,11 @@ def plot_combined_snow_analysis(
 
         percentage_anomaly = percentage_scenario - percentage_control
 
+        print(
+            percentage_anomaly.max(keep_attrs=True),
+            f'{ds.case} Zeitpunkt d. Maximums: {percentage_anomaly.idxmax(dim="time")}',
+        )
+
         # anomaly_pct = (
         #    (mean_snow - mean_snow_control) / mean_snow_control * 100
         # )
@@ -282,16 +296,15 @@ def plot_combined_snow_analysis(
         x,
         mean_snow_control.values,
         label="Control",
-        color="black",
+        color="red",
         linewidth=0.8,
         linestyle="--",
     )
 
     # --- X-Achse ---
     tick_positions = np.arange(0, n_months + 1, 12)
-    print(tick_positions)
+
     tick_labels = [f"Jan. / Year {i}" for i in range(len(tick_positions))]
-    print(tick_labels)
 
     for ax in axes:
         ax.set_xticks(tick_positions)
@@ -307,17 +320,17 @@ def plot_combined_snow_analysis(
 
     axes[0].set_title("Monthly Global Mean Snow Storage", fontsize=12)
     axes[0].set_ylabel("Mean Snow Storage [mm]")
-    axes[0].axvline(4, color="red", linewidth=0.5, linestyle="dashed")
+    axes[0].axvline(4, color="black", linewidth=0.5, linestyle="dashed")
 
     axes[1].set_title("Monthly Snow Storage Anomaly", fontsize=12)
     axes[1].set_ylabel("Mean Snow Storage Anomaly [mm]")
-    axes[1].axhline(0, color="black", linewidth=0.8, linestyle="--")
-    axes[1].axvline(4, color="red", linewidth=0.5, linestyle="dashed")
+    axes[1].axhline(0, color="red", linewidth=0.8, linestyle="--")
+    axes[1].axvline(4, color="black", linewidth=0.5, linestyle="dashed")
 
     axes[2].set_title("Monthly Snow Cover Extent Anomaly", fontsize=12)
     axes[2].set_ylabel("Snow Cover Extent Anomaly [%-points]")
-    axes[2].axhline(0, color="black", linewidth=0.8, linestyle="--")
-    axes[2].axvline(4, color="red", linewidth=0.5, linestyle="dashed")
+    axes[2].axhline(0, color="red", linewidth=0.8, linestyle="--")
+    axes[2].axvline(4, color="black", linewidth=0.5, linestyle="dashed")
 
     for i, ax in enumerate(axes):
         ax.text(
@@ -332,7 +345,12 @@ def plot_combined_snow_analysis(
         )
 
     plt.tight_layout()
-    plt.show()
+    fig.savefig(
+        "./results/intercomparison/global_analysis.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
 
 
 def months_between(dt1, dt2):
@@ -1285,18 +1303,33 @@ if __name__ == "__main__":
 
     cell_area = compute_grid_cell_area(ds_ctrl.snow_storage)
 
+    colors = ["#abd9e9", "#74add1", "#4575b4"]
+
+    # Ignore Cluster 0
+    labels = np.load("./results/clustering/Control_scenario_dtw/3_cluster_labels.npy")
+    template = ds_ctrl.snow_storage.isel(time=0)
+    cluster_map = xr.full_like(template, fill_value=np.nan)
+    land_mask = ~np.isnan(ds_ctrl.snow_storage.isel(time=0))
+    cluster_map.values[land_mask.values] = labels
+
     for ds in [ds_16, ds_47, ds_150, ds_ctrl]:
         change_time(ds)
 
+    ds_47_0 = ds_47.where(cluster_map != 0)
+    ds_16_0 = ds_16.where(cluster_map != 0)
+    ds_150_0 = ds_150.where(cluster_map != 0)
+    ds_ctrl_0 = ds_ctrl.where(cluster_map != 0)
+
     plot_combined_snow_analysis(
-        ds_16,
-        ds_47,
-        ds_150,
-        control=ds_ctrl,
+        ds_16_0,
+        ds_47_0,
+        ds_150_0,
+        control=ds_ctrl_0,
         cell_area=cell_area,
         mask=mask,
         variable="snow_storage",
         labels=[16, 47, 150],
+        colors=colors,
     )
 
     plot_global_snow_sum_per_month(

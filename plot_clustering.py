@@ -422,23 +422,27 @@ def plot_cluster_spatial(
 
 def plot_cluster_combined(
     da: xr.DataArray,
-    timeseries: np.ndarray,  # shape: (n_land_cells, 180)
+    timeseries_scenario: np.ndarray,  # shape: (n_land_cells, 180)
+    timeseries_ctrl: np.ndarray,  # shape: (n_land_cells, 180)
     labels: np.ndarray,  # shape: (n_land_cells,)
+    cell_areas: np.ndarray,  # shape: (n_land_cells,)
+    fractions: np.ndarray,  # shape: (n_land_cells,)
     n_clusters: int = 5,
     title: str = None,
     parameter_name: str = "Snow Storage (mm)",
     save_path: str = "./results/clustering",
 ):
     # ── Farbpalette (gemeinsam für Karte & Zeitreihen) ────────────────────────
-    colors_full = [
-        # "#e0f3f8",
-        # "#abd9e9",
-        "#74add1",
-        "#313695",
-        "#7435BD",
-        "#4E2B75",
-        "#231334",
-    ]
+    """colors_full = [
+        "#abd9e9",  # Cluster 0 - hellblau
+        "#74add1",  # Cluster 1 - mittelblau
+        "#4575b4",  # Cluster 2 - blau
+        "#542788",  # Cluster 3 - lila
+        "#3f007d",  # Cluster 4 - dunkel
+    ]"""
+
+    colors_full = ["#f1eef6", "#abd9e9", "#74add1", "#4575b4", "#542788"]
+    color = "#4575b4"
     colors = colors_full[:n_clusters]
     cmap = mcolors.ListedColormap(colors)
 
@@ -446,7 +450,7 @@ def plot_cluster_combined(
     bounds = np.arange(unique_classes[0] - 0.5, unique_classes[-1] + 1.5, 1)
     norm = mcolors.BoundaryNorm(bounds, ncolors=n_clusters)
 
-    plt.rcParams.update({"axes.edgecolor": "black", "axes.linewidth": 0.2})
+    # plt.rcParams.update({"axes.edgecolor": "black", "axes.linewidth": 0.2})
 
     # ── Dynamisches Grid-Layout ───────────────────────────────────────────────
     n_cols = 2
@@ -498,44 +502,65 @@ def plot_cluster_combined(
     map_ax.add_feature(cfeature.BORDERS, linewidth=0.3, zorder=11)
     map_ax.add_feature(cfeature.OCEAN, color="lightgrey", zorder=10)
     map_ax.set_title(
-        title if title else f"Snow Storage Clusters - {scenario} - {property}",
+        title if title else f"Snow Storage Clusters - 47 Tg",
         fontsize=18,
     )
-
+    effective_areas = (
+        cell_areas * fractions
+    )  # das sollte außerhalb der Cluster-Schleife stehen
     # ── Zeitreihen (dynamisch darunter) ───────────────────────────────────────
     for cluster in range(n_clusters):
         cluster_mask = labels == cluster
-        cluster_ts = timeseries[cluster_mask]
+        cluster_ts = timeseries_scenario[cluster_mask]
+        cluster_ts_ctrl = timeseries_ctrl[cluster_mask]
+        cluster_weights = effective_areas[cluster_mask]
+
         ax = ts_axes[cluster]
-        color = colors[cluster]
 
+        q_up_overall = 0
         for q in np.arange(0.1, 0.6, 0.1):
-            q_up = np.quantile(cluster_ts, 1 - q, axis=0)
-            q_down = np.quantile(cluster_ts, q, axis=0)
+            q_up = weighted_quantile(cluster_ts, cluster_weights, 1 - q)
+            q_down = weighted_quantile(cluster_ts, cluster_weights, q)
+            q_up_overall = max(q_up_overall, q_up.max())
             ax.fill_between(
-                range(timeseries.shape[1]), q_down, q_up, color=color, alpha=q * 2
+                range(cluster_ts.shape[1]), q_down, q_up, color=color, alpha=q * 2
             )
-
-        median = np.median(cluster_ts, axis=0)
-        ax.plot(range(timeseries.shape[1]), median, color="black", linewidth=2)
-
-        ax.set_title(
-            f"Cluster {cluster}  ({cluster_ts.shape[0]} cells, "
-            f"{cluster_ts.shape[0]/len(labels)*100:.1f}%)",
-            fontsize=11,
+        ax.set_ylim(-10, q_up_overall + 100)
+        median = weighted_quantile(cluster_ts, cluster_weights, 0.5)
+        ax.plot(
+            range(cluster_ts.shape[1]),
+            median,
+            color="black",
+            linewidth=2,
+            label="Median 47 Tg",
         )
-        jan_ticks = np.arange(0, timeseries.shape[1], 12)
+
+        median_ctrl = weighted_quantile(cluster_ts_ctrl, cluster_weights, 0.5)
+        ax.plot(
+            range(cluster_ts_ctrl.shape[1]),
+            median_ctrl,
+            color="red",
+            linewidth=1,
+            linestyle="--",
+            label="Median Control",
+        )
+
+        cluster_area_fraction = cluster_weights.sum() / effective_areas.sum() * 100
+        ax.set_title(
+            f"Cluster {cluster}\n({cluster_area_fraction:.1f}% of total area) - {cluster_ts.shape[0]} cells"
+        )
+        jan_ticks = np.arange(0, cluster_ts.shape[1], 12)
         ax.set_xticks(jan_ticks)
         ax.set_xticklabels(
-            [f"Jan / Year {i}" for i in range(len(jan_ticks))],
+            [f"Jan. / Year {i}" for i in range(len(jan_ticks))],
             rotation=45,
             size=5,
             ha="right",
         )
         ax.xaxis.set_minor_locator(MultipleLocator(1))
-        ax.grid(which="major", axis="x", linewidth=0.8, color="gray", alpha=0.5)
-        ax.grid(which="minor", axis="x", linewidth=0.3, color="gray", alpha=0.3)
-        ax.grid(which="major", axis="y", linewidth=0.5, color="gray", alpha=0.3)
+        # ax.grid(which="major", axis="x", linewidth=0.8, color="gray", alpha=0.5)
+        # ax.grid(which="minor", axis="x", linewidth=0.3, color="gray", alpha=0.3)
+        # ax.grid(which="major", axis="y", linewidth=0.5, color="gray", alpha=0.3)
         ax.set_xlabel("Time")
 
         # Subplot-Label a), b), …
@@ -553,11 +578,14 @@ def plot_cluster_combined(
         # Legende nur im ersten Subplot
         if cluster == 0:
             patches_list = [
-                mpatches.Patch(color="black", label="Median"),
+                mlines.Line2D([], [], color="black", label="Median Scenario"),
                 mpatches.Patch(color=color, label="Q40–Q60", alpha=0.8),
                 mpatches.Patch(color=color, label="Q30–Q70", alpha=0.6),
                 mpatches.Patch(color=color, label="Q20–Q80", alpha=0.4),
                 mpatches.Patch(color=color, label="Q10–Q90", alpha=0.2),
+                mlines.Line2D(
+                    [], [], color="red", linestyle="--", label="Median Control"
+                ),
             ]
             ax.legend(handles=patches_list, loc="best", fontsize=9)
 
@@ -587,7 +615,7 @@ if __name__ == "__main__":
         "all": [ds_ctrl, ds_16, ds_47, ds_150],
     }
 
-    fraction_mask = xr.open_dataarray("./data/interim/alte Masken/land_mask_neu.nc")
+    fraction_mask = xr.open_dataarray("./data/interim/land_mask_neu.nc")
     # Calculate cell area for weighting
     cell_area = compute_grid_cell_area(ds_47.snow_storage)
     # Create land mask for extracting cell areas of only land cells
@@ -598,7 +626,25 @@ if __name__ == "__main__":
     timeseries_ctrl = prepare_time_series(ds_ctrl.snow_storage)
     timeseries_ctrl = timeseries_ctrl.squeeze()
 
-    for folder in sorted(os.listdir(base_path)):
+    timeseries_scenario = prepare_time_series(ds_47.snow_storage)
+    timeseries_scenario = timeseries_scenario.squeeze()
+
+    labels = np.load("./results/clustering/47_Tg_dtw/5_cluster_labels.npy")
+
+    plot_cluster_combined(
+        da=ds_47.snow_storage,
+        timeseries_scenario=timeseries_scenario,
+        timeseries_ctrl=timeseries_ctrl,
+        labels=labels,
+        cell_areas=cell_area_1d,
+        fractions=fractions_1d,
+        n_clusters=5,
+        title=None,
+        parameter_name="Snow Storage (mm)",
+        save_path="./results/clustering",
+    )
+
+    """for folder in sorted(os.listdir(base_path)):
         folder_path = os.path.join(base_path, folder)
 
         if not os.path.isdir(folder_path):
@@ -739,4 +785,4 @@ if __name__ == "__main__":
                     title="All_Scenarios",
                     parameter_name="Snow Storage (mm)",
                     save_path=folder_path,
-                )
+                )"""

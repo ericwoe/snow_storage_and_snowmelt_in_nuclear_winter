@@ -411,6 +411,91 @@ def plot_monthly_bars(scenario, control):
     plt.close(fig)
 
 
+def plot_monthly_bars_rain_snow(
+    scenario_snowmelt, scenario_rain, control_snowmelt, control_rain, river
+):
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    n_months = len(scenario_snowmelt)
+    x = np.arange(n_months)
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    # Vertikale Hilfslinien
+    for j in x:
+        ax.axvline(j, color="lightgrey", linewidth=0.2)
+    jan_ticks = np.arange(0, n_months, 12)
+    for j in jan_ticks:
+        ax.axvline(j, color="grey", linewidth=0.5)
+
+    # Farben
+    color_control = "steelblue"
+    color_scenario = "tomato"
+
+    # --- Control (nach unten) ---
+    # Regen: volle Alpha, Basis bei 0
+    ax.bar(
+        x,
+        -control_rain.values,
+        width=1.0,
+        color=color_control,
+        alpha=0.85,
+        label="Control Rain",
+    )
+    # Snowmelt: gestapelt auf Regen, geringeres Alpha
+    ax.bar(
+        x,
+        -control_snowmelt.values,
+        bottom=-control_rain.values,
+        width=1.0,
+        color=color_control,
+        alpha=0.4,
+        label="Control Snowmelt",
+    )
+
+    # --- Szenario (nach oben) ---
+    ax.bar(
+        x,
+        scenario_rain.values,
+        width=1.0,
+        color=color_scenario,
+        alpha=0.85,
+        label="Scenario Rain",
+    )
+    ax.bar(
+        x,
+        scenario_snowmelt.values,
+        bottom=scenario_rain.values,
+        width=1.0,
+        color=color_scenario,
+        alpha=0.4,
+        label="Scenario Snowmelt",
+    )
+
+    ax.axhline(0, color="black", linewidth=0.8)
+
+    # Y-Achse: absolute Werte
+    yticks = ax.get_yticks()
+    ax.set_yticklabels([str(abs(int(y))) for y in yticks])
+
+    # X-Achse
+    ax.set_xticks(jan_ticks)
+    ax.set_xticklabels(
+        [f"Jan. / Year {i}" for i in range(len(jan_ticks))],
+        rotation=45,
+        ha="right",
+        fontsize=7,
+    )
+    ax.tick_params(axis="x", which="minor", bottom=False)
+    ax.set_xlabel("Time (months)")
+    ax.set_ylabel("Discharge [m³/s]")
+    ax.set_title(river)
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(f"./results/basin/{river}_monthly_bars_rain_snow.png", dpi=300)
+    plt.close(fig)
+
+
 def plot_monthly_anomaly(scenario, control):
     import matplotlib.pyplot as plt
     import numpy as np
@@ -466,7 +551,7 @@ def plot_monthly_anomaly(scenario, control):
     ax.tick_params(axis="x", which="minor", bottom=False)
 
     ax.set_xlabel("Time (months)")
-    ax.set_ylabel("Snowmelt anomaly [m³]")
+    ax.set_ylabel("Discharge anomaly [m³/s]")
     ax.set_title(f"{river}")
     plt.tight_layout()
     plt.savefig(f"./results/basin/{river}_monthly_anomaly.png", dpi=300)
@@ -577,9 +662,10 @@ if __name__ == "__main__":
 
     cell_area = compute_grid_cell_area(ds_control.snow_storage)  # km2
 
-    annual_anomaly_data = (
+    annual_snowmelt_anomaly_data = (
         {}
     )  # {river_name: (dsc_45_annual_sum, dsc_control_annual_sum)}
+    annual_discharge_anomaly_data = {}  # {river_name: (dsc_45_snowmelt_annual_sum
 
     for river, (filepath, river_id) in main_rivers.items():
         # Select river from Data
@@ -590,64 +676,95 @@ if __name__ == "__main__":
         river_mask = create_mask(ds_150, river_basin_diss)
 
         # Select all cells inside Basin
-        river_150 = ds_150.snow_melt.where(river_mask > 0)
-        river_control = ds_control.snow_melt.where(river_mask > 0)
-        river_16 = ds_16.snow_melt.where(river_mask > 0)
-        river_47 = ds_47.snow_melt.where(river_mask > 0)
+        ##SNOWMELT
+        snowmelt_150 = ds_150.snow_melt.where(river_mask > 0)
+        snowmelt_control = ds_control.snow_melt.where(river_mask > 0)
+        snowmelt_16 = ds_16.snow_melt.where(river_mask > 0)
+        snowmelt_47 = ds_47.snow_melt.where(river_mask > 0)
 
-        # Snow Storage in River Basin
-        river_47_storage = ds_47.snow_storage.where(river_mask > 0)
-        river_control_storage = ds_control.snow_storage.where(river_mask > 0)
+        ##RAIN
+        rain_47 = ds_47.rainfall.where(river_mask > 0)
+        rain_control = ds_control.rainfall.where(river_mask > 0)
 
         # convert from mm/month to discharge in m3/month
-        dsc_150 = convert_mm_month_to_discharge_m3_month(
-            river_150, river_mask, cell_area
+        ##SNOWMELT
+        dsc_150_snowmelt = convert_mm_month_to_discharge_m3_month(
+            snowmelt_150, river_mask, cell_area
         )
-        dsc_control = convert_mm_month_to_discharge_m3_month(
-            river_control, river_mask, cell_area
+        dsc_control_snowmelt = convert_mm_month_to_discharge_m3_month(
+            snowmelt_control, river_mask, cell_area
         )
-        dsc_47 = convert_mm_month_to_discharge_m3_month(river_47, river_mask, cell_area)
-        dsc_16 = convert_mm_month_to_discharge_m3_month(river_16, river_mask, cell_area)
-        storage_47 = convert_mm_month_to_discharge_m3_month(
-            river_47_storage, river_mask, cell_area
+        dsc_47_snowmelt = convert_mm_month_to_discharge_m3_month(
+            snowmelt_47, river_mask, cell_area
         )
-        storage_control = convert_mm_month_to_discharge_m3_month(
-            river_control_storage, river_mask, cell_area
+        dsc_16_snowmelt = convert_mm_month_to_discharge_m3_month(
+            snowmelt_16, river_mask, cell_area
+        )
+
+        ##RAIN
+        dsc_47_rain = convert_mm_month_to_discharge_m3_month(
+            rain_47, river_mask, cell_area
+        )
+        dsc_control_rain = convert_mm_month_to_discharge_m3_month(
+            rain_control, river_mask, cell_area
         )
 
         # Monthly Discharge Sum in m3/month
-        dsc_sum_150 = monthly_discharge_sum_m3(dsc_150)
-        dsc_sum_47 = monthly_discharge_sum_m3(dsc_47)
-        dsc_sum_16 = monthly_discharge_sum_m3(dsc_16)
-        dsc_sum_control = monthly_discharge_sum_m3(dsc_control)
+        ##SNOWMELT
+        dsc_sum_150_snowmelt = monthly_discharge_sum_m3(dsc_150_snowmelt)
+        dsc_sum_47_snowmelt = monthly_discharge_sum_m3(dsc_47_snowmelt)
+        dsc_sum_16_snowmelt = monthly_discharge_sum_m3(dsc_16_snowmelt)
+        dsc_sum_control_snowmelt = monthly_discharge_sum_m3(dsc_control_snowmelt)
+
+        ##RAIN
+        dsc_sum_47_rain = monthly_discharge_sum_m3(dsc_47_rain)
+        dsc_sum_control_rain = monthly_discharge_sum_m3(dsc_control_rain)
 
         # Monthly Discharge in m3/s
-        dsc_150_m3_s = dsc_sum_150 / (
-            ds_150["days_in_month"].isel(lat=0, lon=0) * 24 * 3600
-        )
-        dsc_47_m3_s = dsc_sum_47 / (
+        ##SNOWMELT
+        dsc_47_m3_s = dsc_sum_47_snowmelt / (
             ds_47["days_in_month"].isel(lat=0, lon=0) * 24 * 3600
         )
-        dsc_16_m3_s = dsc_sum_16 / (
-            ds_16["days_in_month"].isel(lat=0, lon=0) * 24 * 3600
+        dsc_control_m3_s = dsc_sum_control_snowmelt / (
+            ds_control["days_in_month"].isel(lat=0, lon=0) * 24 * 3600
         )
-        dsc_control_m3_s = dsc_sum_control / (
+        ##RAIN
+        dsc_47_rain_m3_s = dsc_sum_47_rain / (
+            ds_47["days_in_month"].isel(lat=0, lon=0) * 24 * 3600
+        )
+        dsc_control_rain_m3_s = dsc_sum_control_rain / (
             ds_control["days_in_month"].isel(lat=0, lon=0) * 24 * 3600
         )
 
-        # Monthly Snow Storage Sum in m3/month
-        storage_sum_47_m3 = monthly_discharge_sum_m3(storage_47)
-        storage_sum_control_m3 = monthly_discharge_sum_m3(storage_control)
-
         # Annual Discharge Sum in m3/year
-        dsc_47_annual_sum = annual_sum(dsc_sum_47)
-        dsc_control_annual_sum = annual_sum(dsc_sum_control)
+        ##SNOWMELT
+        dsc_47_snowmelt_annual_sum = annual_sum(dsc_sum_47_snowmelt)
+        dsc_control_snowmelt_annual_sum = annual_sum(dsc_sum_control_snowmelt)
+
+        # RAIN
+        dsc_47_rain_annual_sum = annual_sum(dsc_sum_47_rain)
+        dsc_control_rain_annual_sum = annual_sum(dsc_sum_control_rain)
 
         # Mean Annual Sum in m3/year -> um Schwankung zu reduzieren
-        dsc_control_mean_annual_sum = dsc_control_annual_sum.mean(dim="year")
+        ##SNOWMELT
+        dsc_control_mean_annual_snowmelt_sum = dsc_control_snowmelt_annual_sum.mean(
+            dim="year"
+        )
+        ##RAIN + SNOWMELT
+        dsc_control_mean_annual_sum = (
+            dsc_control_rain_annual_sum + dsc_control_snowmelt_annual_sum
+        ).mean(dim="year")
 
         # Annual Anomaly in m3/year
-        annual_anomaly_data[river] = (dsc_47_annual_sum, dsc_control_annual_sum)
+        annual_discharge_anomaly_data[river] = (
+            dsc_47_snowmelt_annual_sum + dsc_47_rain_annual_sum,
+            dsc_control_snowmelt_annual_sum + dsc_control_rain_annual_sum,
+        )
+
+        annual_snowmelt_anomaly_data[river] = (
+            dsc_47_snowmelt_annual_sum,
+            dsc_control_snowmelt_annual_sum,
+        )
 
         """plot_discharge(
             dsc_sum_47,
@@ -665,8 +782,8 @@ if __name__ == "__main__":
             labels=["47", "Control", "47 Snow Storage", "Control Snow Storage"],
             years=[0, 15],
         )
-        plot_annual_anomaly(dsc_45_annual_sum, dsc_control_annual_sum)
-        plot_annual_anomaly(dsc_45_annual_sum, dsc_control_annual_sum.mean(dim="year"))"""
+        plot_annual_anomaly(dsc_47_snowmelt_annual_sum, dsc_control_snowmelt_annual_sum)
+        plot_annual_anomaly(dsc_47_annual_sum, dsc_control_annual_sum.mean(dim="year"))"""
         print(
             f"{river} - Szenario 32k: {np.sum(dsc_47_m3_s.values > 32000)}, Control 32k: {np.sum(dsc_control_m3_s.values > 32000)} \n Szenario 25k: {np.sum(dsc_47_m3_s.values > 25000)}, Control 25k: {np.sum(dsc_control_m3_s.values > 25000)}"
         )
@@ -678,11 +795,21 @@ if __name__ == "__main__":
             dsc_47_m3_s[dsc_47_m3_s.values > 32000],
             dsc_control_m3_s[dsc_control_m3_s.values > 32000],
         )
-        plot_monthly_anomaly(dsc_sum_47, dsc_sum_control)
+        plot_monthly_anomaly(
+            dsc_47_m3_s,
+            dsc_control_m3_s,
+        )
         # plot_monthly_bars(dsc_sum_47, dsc_sum_control)
         plot_monthly_bars(dsc_47_m3_s, dsc_control_m3_s)
+        plot_monthly_bars_rain_snow(
+            dsc_47_m3_s,
+            dsc_47_rain_m3_s,
+            dsc_control_m3_s,
+            dsc_control_rain_m3_s,
+            river,
+        )
 
-    n_rivers = len(annual_anomaly_data)
+    n_rivers = len(annual_discharge_anomaly_data)
     ncols = 3
     nrows = (n_rivers + ncols - 1) // ncols  # = 4 bei 12 Flüssen
 
@@ -694,7 +821,9 @@ if __name__ == "__main__":
     )
     axes_flat = axes.flatten()
 
-    for ax, (river, (scenario, control)) in zip(axes_flat, annual_anomaly_data.items()):
+    for ax, (river, (scenario, control)) in zip(
+        axes_flat, annual_snowmelt_anomaly_data.items()
+    ):
         plot_annual_anomaly(scenario, control, ax=ax)
 
     # Übrige leere Subplots ausblenden
@@ -715,7 +844,7 @@ if __name__ == "__main__":
     axes_flat2 = axes2.flatten()
 
     for ax, (river, (scenario, control)) in zip(
-        axes_flat2, annual_anomaly_data.items()
+        axes_flat2, annual_discharge_anomaly_data.items()
     ):
         plot_annual_sums_two_bars(scenario, control, ax=ax)
 
