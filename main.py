@@ -9,7 +9,9 @@ from src.processing.clustering import (
 import xarray as xr
 from pathlib import Path
 import geopandas as gpd
-
+import cftime
+import pickle
+import numpy as np
 
 SCENARIOS = {
     "Control": {
@@ -36,32 +38,50 @@ SCENARIOS = {
 
 GADM_FILE_PATH = "./data/ne_110m_land/ne_110m_land.shp"
 LAND_MASK_FILE_PATH = "./data/interim/land_mask_neu.nc"
+SPINUP_START = cftime.DatetimeNoLeap(1, 2, 1, 0, 0, 0, 0, has_year_zero=True)
+SPINUP_END = cftime.DatetimeNoLeap(5, 1, 1, 0, 0, 0, 0, has_year_zero=True)
+ANALYSIS_START = cftime.DatetimeNoLeap(5, 2, 1, 0, 0, 0, 0, has_year_zero=True)
+ANALYSIS_END = cftime.DatetimeNoLeap(20, 1, 1, 0, 0, 0, 0, has_year_zero=True)
 
 
 datasets = {}
 
-# Read in Data
+# Read in Data and calculate precip and temperature variables
 for name, config in SCENARIOS.items():
     ds = prepare_data.run_preprocessing(
         data_directory=config["data_dir"],
         file_pattern=config["pattern"],
         output_path=None,
     )
+    print(ds)
+    print(ds.time)
     datasets[name] = ds
+
+# Add spinup period to all datasets
+spinup_period = datasets["Control"].sel(time=slice(SPINUP_START, SPINUP_END))
+for name, ds in datasets.items():
+    if name == "Control":
+        continue  # Control dataset already includes the spinup period
+    datasets[name] = xr.concat([spinup_period, ds], dim="time")
+    print(datasets[name].time)
+
 
 # Align all Datasets from Dictionary "datasets"
 # along all 3 dimensions (time, lat, lon)
-aligned = xr.align(*datasets.values(), join="inner")
+# aligned = xr.align(*datasets.values(), join="inner")
 
 # Back to Dictionary
-datasets = dict(zip(datasets.keys(), aligned))
+# datasets = dict(zip(datasets.keys(), aligned))
 
 for name, ds in datasets.items():
 
-    ds = add_snow_variables(ds)
-
     # Run Snow Model
     ds = add_snow_variables(ds)
+
+    # Reduce to Analysis Period
+    ds = ds.sel(time=slice(ANALYSIS_START, ANALYSIS_END))  # Select only analysis period
+    print(ds)
+    print(ds.time)
 
     # Create or import land mask
     land_mask_path = Path(LAND_MASK_FILE_PATH)
@@ -78,7 +98,7 @@ for name, ds in datasets.items():
         # Save mask to NetCDF
         mask.to_netcdf(land_mask_path)
 
-    # Apply land mask to dataset - values become NaN where mask <= 0
+    # Apply land mask to dataset - values become NaN where mask == 0
     print("Applying land mask to dataset")
     ds = ds.where(mask > 0)
 
@@ -96,17 +116,35 @@ for name, ds in datasets.items():
     # Datasets Dict aktualisieren
     datasets[name] = ds
 ##################################################################################################
-# CLUSTERING - 47 Tg Scenario
+# CLUSTERING - 47 Tg Scenario and Control
 ##################################################################################################
+# Prepare time series for clustering
+
 timeseries = prepare_time_series(datasets["47"].snow_storage)
-print("Shape timeseries objekt", timeseries.shape)
 
-"""labels, km = time_series_analysis(timeseries, 5)
+print(timeseries.shape)
 
-print("Anzahl Labels:", len(labels))
+# Subset for Elbow Method
+# subset_size = int(0.2 * 5661)  # ca. 1248 Reihen
+# indices = np.random.choice(5661, subset_size, replace=False)
+# timeseries_subset = timeseries_scaled[indices]
 
-labels_xarray = convert_labels_to_xarray(labels, datasets["47"].snow_storage)
+labels, km = time_series_analysis(timeseries, n_clusters=5)
+np.save(
+    "./results/clustering/47_Tg_dtw/5_cluster_labels.npy", labels
+)  # Labels als NumPy-Array
+with open("./results/clustering/47_Tg_dtw/kmeans_model_5_clusters.pkl", "wb") as f:
+    pickle.dump(km, f)  # Modell mit pickle
 
-datasets["47"]["5_clusters"] = labels_xarray
+# Control Scenario Clustering
+timeseries = prepare_time_series(datasets["Control"].snow_storage)
+print(timeseries.shape)
 
-datasets["47"].to_netcdf("./results/47/snow_47.nc")"""
+labels, km = time_series_analysis(timeseries, n_clusters=5)
+np.save(
+    "./results/clustering/Control_scenario_dtw/3_cluster_labels.npy", labels
+)  # Labels als NumPy-Array
+with open(
+    "./results/clustering/Control_scenario_dtw/kmeans_model_3_clusters.pkl", "wb"
+) as f:
+    pickle.dump(km, f)  # Modell mit pickle
