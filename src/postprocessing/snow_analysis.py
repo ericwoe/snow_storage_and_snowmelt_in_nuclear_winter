@@ -144,13 +144,30 @@ def plot_combined_snow_analysis(
         # )
         axes[2].plot(x, percentage_anomaly.values, label=f"{label} Tg BC", color=color)
 
+    mean_expanded = mean_snow_control_monthly.sel(
+        month=mean_snow_control.time.dt.month
+    ).values
+    std_expanded = std_snow_control_monthly.sel(
+        month=mean_snow_scenario.time.dt.month
+    ).values
+
     axes[0].plot(
         x,
-        mean_snow_control.values,
-        label="Control",
+        mean_expanded,
         color="#E34444",
         linewidth=1.2,
         linestyle="--",
+    )
+
+    axes[0].fill_between(
+        x,
+        mean_expanded - std_expanded,
+        mean_expanded + std_expanded,
+        color="#CE5151",
+        alpha=0.4,
+        edgecolor="#CE5151",
+        linewidth=1,
+        label="±1σ Control",
     )
 
     std_expanded = std_snow_control_monthly.sel(

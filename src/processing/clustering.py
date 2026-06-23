@@ -1,6 +1,6 @@
 import xarray as xr
 import numpy as np
-from tslearn.clustering import TimeSeriesKMeans
+from tslearn.clustering import TimeSeriesKMeans, silhouette_score
 from tslearn.preprocessing import TimeSeriesScalerMinMax
 from datetime import datetime
 import os
@@ -176,7 +176,17 @@ if __name__ == "__main__":
 
     da = ds_control.snow_storage
     timeseries = prepare_time_series(da)
-    print(timeseries.shape)
+    print(f'Shape of Timeseries: {timeseries.shape}')
+    #Subset
+    subset_size = int(0.2 * timeseries.shape[0])  # ca. 1248 Reihen
+    indices = np.random.choice(timeseries.shape[0], subset_size, replace=False)
+    timeseries_subset = timeseries[indices]  
+    print(f'Shape of Subset: {timeseries_subset.shape}')
+
+    elbow_method(timeseries_subset, max_clusters=10)
+    
+
+
 
     # Subset for Elbow Method
     # subset_size = int(0.2 * 5661)  # ca. 1248 Reihen
@@ -191,3 +201,32 @@ if __name__ == "__main__":
         "./results/clustering/Control_scenario_dtw/kmeans_model_3_clusters.pkl", "wb"
     ) as f:
         pickle.dump(km, f)  # Modell mit pickle
+
+
+    from tslearn.clustering import silhouette_score
+# Silhouette Scores berechnen
+
+from tslearn.preprocessing import TimeSeriesScalerMinMax
+scaler = TimeSeriesScalerMinMax()
+timeseries_scaled = scaler.fit_transform(timeseries_subset_180)
+score = silhouette_score(
+    X=timeseries_scaled,        # Shape: (n_samples, n_timestamps, n_features)
+    labels=labels,
+    metric="euclidean",
+    n_jobs=-1,
+    verbose=1,
+    random_state=42
+    )
+    scores[i] = score 
+
+    silhouette_scores_df = pd.DataFrame.from_dict(
+            scores, 
+            orient="index", 
+            columns=["score"]
+        )
+
+plt.style.use("https://raw.githubusercontent.com/allfed/ALLFED-matplotlib-style-sheet/main/ALLFED.mplstyle")
+silhouette_scores_df.plot(legend= False)
+plt.title(f"Silhouette Scores (Euclidean), Subset Size = {subset_size} cells x 180 months", fontsize=14)
+plt.xlabel("Anzahl Cluster k", fontsize=12)
+plt.ylabel("Silhouette-Score", fontsize=12)

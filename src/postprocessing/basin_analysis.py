@@ -559,6 +559,7 @@ if __name__ == "__main__":
         )
         plot_monthly_bars(dsc_47_m3_s, dsc_control_m3_s)
 
+    print(annual_snowmelt_anomaly_data)
     n_rivers = len(annual_total_discharge_anomaly_data)
     ncols = 3
     nrows = (n_rivers + ncols - 1) // ncols  # = 4 bei 12 Flüssen
