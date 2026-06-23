@@ -160,10 +160,8 @@ def run_preprocessing(
     if output_path:
         print(f"Saving processed data to {output_path}")
         print("Deleting time_bnds")
-        ds = ds.drop_vars(
-            "time_bnds"
-        )  # notwendig da hier sonst Fehler beim Speichern auftritt: "ValueError:
-        # Cannot encode time_bnds with cftime objects"
+        ds = ds.drop_vars("time_bnds")  # necessary because otherwise occurs a
+        # "ValueError: "Cannot encode time_bnds with cftime objects"
         ds.to_netcdf(output_path, engine="netcdf4")
 
     return ds

@@ -607,31 +607,34 @@ if __name__ == "__main__":
     fig4, axes4 = plt.subplots(
         nrows,
         ncols,
-        figsize=(ncols * 6, nrows * 5),  # Höhe pro Zeile erhöht
-        constrained_layout=True,  # statt tight_layout
+        figsize=(ncols * 6, nrows * 5),
+        constrained_layout=True,
     )
     axes_flat4 = axes4.flatten()
 
-    for ax, (river, (scenario, control)) in zip(
-        axes_flat4, annual_snowmelt_anomaly_data.items()
+    for ax, (river, (scenario, control)), idx in zip(
+        axes_flat4,
+        annual_snowmelt_anomaly_data.items(),
+        range(len(annual_snowmelt_anomaly_data)),
     ):
-        plot_annual_anomaly(scenario, control, ax=ax, title="Snowmelt Anomaly")
+        plot_annual_anomaly(scenario, control, ax=ax, title="Snowmelt")
+        ax.text(
+            -0.09,
+            1.04,
+            f"{chr(97 + idx)})",
+            transform=ax.transAxes,
+            fontsize=12,
+            verticalalignment="top",
+            weight="bold",
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.7),
+        )
 
     # Übrige leere Subplots ausblenden
-    y_max = max(ax.get_ylim()[1] for ax in axes_flat4[:n_rivers])
-    y_min = min(ax.get_ylim()[0] for ax in axes_flat4[:n_rivers])
-
-    for ax in axes_flat4[:n_rivers]:
-        ax.set_ylim(y_min, y_max, auto=False)
-
     for ax in axes_flat4[n_rivers:]:
         ax.set_visible(False)
 
-    # fig.suptitle("Jährliche Anomalie der Abflussspende", fontsize=11)
-    plt.tight_layout()
     plt.savefig("./results/river_basin_annual_snowmelt_anomalies.png", dpi=300)
     plt.close(fig4)
-
     fig2, axes2 = plt.subplots(
         nrows,
         ncols,
