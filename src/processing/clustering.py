@@ -170,63 +170,122 @@ def elbow_method(timeseries, max_clusters):
     return inertias_df
 
 
+def elbow_and_silhouette_method(timeseries, max_clusters):
+    """
+    Berechnet Elbow-Inertias UND Silhouette Scores für verschiedene k.
+    """
+    checkpoint_dir = os.path.join(
+        "results",
+        "clustering",
+        "snow_storage",
+        "elbow_method",
+        "47_Tg_dtw_Subset",  # oder dein Scenario
+    )
+    os.makedirs(checkpoint_dir, exist_ok=True)
+
+    checkpoint_inertias = os.path.join(checkpoint_dir, "inertias.csv")
+    checkpoint_silhouettes = os.path.join(checkpoint_dir, "silhouette_scores.csv")
+
+    # Load existing results if available
+    if os.path.exists(checkpoint_inertias):
+        print(f"Lade bestehende Inertias aus {checkpoint_inertias}")
+        inertias_df = pd.read_csv(checkpoint_inertias, sep=";", index_col=0)
+        inertias = {
+            int(k): v for k, v in inertias_df.to_dict()[inertias_df.columns[0]].items()
+        }
+    else:
+        inertias = {}
+
+    if os.path.exists(checkpoint_silhouettes):
+        print(f"Lade bestehende Silhouette Scores aus {checkpoint_silhouettes}")
+        silhouettes_df = pd.read_csv(checkpoint_silhouettes, sep=";", index_col=0)
+        silhouettes = {
+            int(k): v
+            for k, v in silhouettes_df.to_dict()[silhouettes_df.columns[0]].items()
+        }
+    else:
+        silhouettes = {}
+
+    # Normalize once
+    print("Apply MinMax-Scaling method")
+    scaler = TimeSeriesScalerMinMax()
+    timeseries_scaled = scaler.fit_transform(timeseries)
+
+    # Try different k values
+    for i in range(2, max_clusters + 1):
+        if i in inertias and i in silhouettes:
+            print(f"k={i} bereits berechnet, überspringe...")
+            continue
+
+        print(f"\n{'='*60}")
+        begin = datetime.now()
+        print(f"{begin.strftime('%H:%M:%S')} - Trying {i} clusters")
+        print(f"{'='*60}")
+
+        # Train model
+        km = TimeSeriesKMeans(
+            n_clusters=i,
+            metric="dtw",
+            tol=1e-3,  # tolerance for convergence
+            n_jobs=-1,
+            max_iter=50,
+            random_state=42,
+            verbose=1,
+        )
+        labels = km.fit_predict(timeseries_scaled)
+
+        # Save inertia
+        inertias[i] = km.inertia_
+
+        # Compute silhouette score
+        sil_score = silhouette_score(timeseries_scaled, labels, metric="dtw")
+        silhouettes[i] = sil_score
+
+        print(f"✓ k={i} fertig!")
+        print(f"  Inertia: {km.inertia_:.2f}")
+        print(f"  Silhouette Score: {sil_score:.4f}")
+
+        # Save labels and model
+        labels_path = os.path.join(checkpoint_dir, f"{i}_cluster_labels.npy")
+        model_path = os.path.join(checkpoint_dir, f"kmeans_model_{i}.pkl")
+        np.save(labels_path, labels)
+        with open(model_path, "wb") as f:
+            pickle.dump(km, f)
+
+        # Save both CSVs after each k
+        inertias_df = pd.DataFrame.from_dict(
+            inertias, orient="index", columns=["inertia"]
+        )
+        inertias_df.index.name = "k"
+        inertias_df.to_csv(checkpoint_inertias, sep=";")
+
+        silhouettes_df = pd.DataFrame.from_dict(
+            silhouettes, orient="index", columns=["silhouette_score"]
+        )
+        silhouettes_df.index.name = "k"
+        silhouettes_df.to_csv(checkpoint_silhouettes, sep=";")
+
+        print(f"→ Ergebnisse gespeichert")
+        print(f"fertig um {datetime.now().strftime('%H:%M:%S')}")
+
+    print(f"\n{'='*60}")
+    print("Alle Cluster fertig berechnet!")
+    print(f"{'='*60}")
+
+    return inertias_df, silhouettes_df
+
+
 if __name__ == "__main__":
     ds_47 = xr.open_dataset("./results/47/snow_47.nc")
     ds_control = xr.open_dataset("./results/Control/snow_control.nc")
 
-    da = ds_control.snow_storage
+    da = ds_47.snow_storage
     timeseries = prepare_time_series(da)
-    print(f'Shape of Timeseries: {timeseries.shape}')
-    #Subset
-    subset_size = int(0.2 * timeseries.shape[0])  # ca. 1248 Reihen
+    print(f"Shape of Timeseries: {timeseries.shape}")
+    # Subset
+    subset_size = int(0.3 * timeseries.shape[0])
     indices = np.random.choice(timeseries.shape[0], subset_size, replace=False)
-    timeseries_subset = timeseries[indices]  
-    print(f'Shape of Subset: {timeseries_subset.shape}')
+    timeseries_subset = timeseries[indices]
+    print(f"Shape of Subset: {timeseries_subset.shape}")
 
-    elbow_method(timeseries_subset, max_clusters=10)
-    
-
-
-
-    # Subset for Elbow Method
-    # subset_size = int(0.2 * 5661)  # ca. 1248 Reihen
-    # indices = np.random.choice(5661, subset_size, replace=False)
-    # timeseries_subset = timeseries_scaled[indices]
-
-    labels, km = time_series_analysis(timeseries, n_clusters=3)
-    np.save(
-        "./results/clustering/Control_scenario_dtw/3_cluster_labels.npy", labels
-    )  # Labels als NumPy-Array
-    with open(
-        "./results/clustering/Control_scenario_dtw/kmeans_model_3_clusters.pkl", "wb"
-    ) as f:
-        pickle.dump(km, f)  # Modell mit pickle
-
-
-    from tslearn.clustering import silhouette_score
-# Silhouette Scores berechnen
-
-from tslearn.preprocessing import TimeSeriesScalerMinMax
-scaler = TimeSeriesScalerMinMax()
-timeseries_scaled = scaler.fit_transform(timeseries_subset_180)
-score = silhouette_score(
-    X=timeseries_scaled,        # Shape: (n_samples, n_timestamps, n_features)
-    labels=labels,
-    metric="euclidean",
-    n_jobs=-1,
-    verbose=1,
-    random_state=42
-    )
-    scores[i] = score 
-
-    silhouette_scores_df = pd.DataFrame.from_dict(
-            scores, 
-            orient="index", 
-            columns=["score"]
-        )
-
-plt.style.use("https://raw.githubusercontent.com/allfed/ALLFED-matplotlib-style-sheet/main/ALLFED.mplstyle")
-silhouette_scores_df.plot(legend= False)
-plt.title(f"Silhouette Scores (Euclidean), Subset Size = {subset_size} cells x 180 months", fontsize=14)
-plt.xlabel("Anzahl Cluster k", fontsize=12)
-plt.ylabel("Silhouette-Score", fontsize=12)
+    elbow_and_silhouette_method(timeseries_subset, max_clusters=10)
