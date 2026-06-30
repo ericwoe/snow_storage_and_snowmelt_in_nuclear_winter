@@ -1,18 +1,3 @@
-"""
-Tools for visualizing global mean snow storage, snow storage anomalies, and
-snow cover extent anomalies across multiple nuclear winter soot injection
-scenarios, relative to a control run.
-
-This module loads gridded snow storage NetCDF output for several scenarios
-and a control run, restricts the analysis to a chosen cluster (via a
-pre-computed cluster label map), and produces a combined three-panel figure
-showing:
-    a) Mean snow storage over time
-    b) Mean snow storage anomaly relative to the control's monthly climatology
-    c) Snow cover extent anomaly (in percentage points) relative to the
-       control's monthly climatology
-"""
-
 import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
@@ -23,6 +8,10 @@ from matplotlib.colors import SymLogNorm
 from matplotlib.ticker import FixedLocator
 from cartopy import crs as ccrs
 import cartopy.feature as cfeature
+from src.utilities import compute_grid_cell_area
+
+DEFAULT_SCENARIO_COLORS = ["#abd9e9", "#74add1", "#4575b4"]
+SOOT_INJECTION_MONTH = 4
 
 
 def change_time(ds):
@@ -50,49 +39,6 @@ def change_time(ds):
         for t in ds.time.values
     ]
     ds.coords["time"] = new_time
-
-
-def compute_grid_cell_area(da):
-    """
-    Compute the area of each grid cell in a regular lat/lon grid.
-
-    The calculation uses the spherical Earth approximation, accounting for
-    the latitudinal variation in grid cell width. Cell area depends only on
-    latitude (grid cells at the same latitude have equal area), so the
-    result is computed as a 1D array along latitude and then broadcast to
-    match the full spatial shape of the input.
-
-    Parameters
-    ----------
-    da : xr.DataArray
-        DataArray with "lat" and "lon" coordinates (in degrees) and a "time"
-        dimension. Only the coordinates and one time slice are used to
-        determine the output shape; values are not otherwise used.
-
-    Returns
-    -------
-    xr.DataArray
-        2D DataArray of grid cell area in square meters, with the same
-        spatial shape as `da`, named "cell_area".
-    """
-    R = 6371000.0  # Earth radius [m]
-    dlat = abs(da.lat[1] - da.lat[0])
-    dlon = abs(da.lon[1] - da.lon[0])
-    lat_rad = np.deg2rad(da.lat)
-    dlat_rad = np.deg2rad(dlat)
-    dlon_rad = np.deg2rad(dlon)
-
-    lat_upper = np.clip(lat_rad + dlat_rad / 2, -np.pi / 2, np.pi / 2)
-    lat_lower = np.clip(lat_rad - dlat_rad / 2, -np.pi / 2, np.pi / 2)
-
-    # Area of a latitude band of width dlon, between lat_lower and lat_upper
-    area_1d = R**2 * dlon_rad * np.abs(np.sin(lat_upper) - np.sin(lat_lower))
-
-    # Expand from 1D (latitude only) to 2D (latitude x longitude)
-    cell_area = area_1d.broadcast_like(da.isel(time=0))
-    cell_area.name = "cell_area"
-    cell_area.attrs["units"] = "m2"
-    return cell_area
 
 
 def plot_combined_snow_analysis(
@@ -159,9 +105,6 @@ def plot_combined_snow_analysis(
     (`groupby("time.month")`), rather than with a single time-mean control
     value. This accounts for the control run's own seasonal cycle.
     """
-    plt.style.use(
-        "https://raw.githubusercontent.com/allfed/ALLFED-matplotlib-style-sheet/main/ALLFED.mplstyle"
-    )
 
     if colors is None:
         colors = DEFAULT_SCENARIO_COLORS
@@ -217,9 +160,6 @@ def plot_combined_snow_analysis(
         ).sortby("time")
         axes[1].plot(
             month_index, anomaly_mean.values, label=f"{label} Tg BC", color=color
-        )
-        print(
-            f'Maximale Anomalie: {max(anomaly_mean)}, Zeitpunkt: {anomaly_mean.idxmax(dim="time").values} für Szenario {label} Tg BC'
         )
 
         # (c) Snow cover extent anomaly relative to the control's
@@ -394,10 +334,6 @@ def find_mean_anomaly_peak_time(
     anomaly_mean = (
         mean_snow_scenario.groupby("time.month") - mean_snow_control_monthly
     ).sortby("time")
-
-    print(anomaly_mean)
-    print(max(anomaly_mean))
-    print(anomaly_mean.idxmax(dim="time").values)
 
     time_mean_peak = anomaly_mean.idxmax(dim="time").item()
 
@@ -614,7 +550,7 @@ if __name__ == "__main__":
     ds_ctrl = xr.open_dataset("./results/Control/snow_control.nc")
     mask = xr.open_dataarray("./data/interim/land_mask_neu.nc")
 
-    cell_area = compute_grid_cell_area(ds_ctrl.snow_storage)
+    cell_area = compute_grid_cell_area(ds_ctrl.snow_storage.isel(time=0))
 
     # Default colors used for the three soot injection scenarios when no custom
     # color list is provided

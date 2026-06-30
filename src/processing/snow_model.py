@@ -9,9 +9,20 @@ def snow_model(
     precip: np.ndarray, t_mean: np.ndarray, days: np.ndarray
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Calculates the snow based on a simple temperature based model as described
-    in Massmann (2019) "Modelling snow in ungauged catchments" with fixed values
-    for the snow melt threshold and the degree day factor
+    Degree-day snow model following Massmann (2019) "Modelling snow in ungauged catchments".
+
+    Precipitation falls as snow when t_mean <= 1.7 °C. Snow melts at a fixed rate of
+    4.0 mm/(°C·day) for each degree above 0 °C, capped by the available snow storage.
+
+    Arguments:
+        precip: np.ndarray, shape (time, lat, lon) - monthly precipitation [mm month⁻¹]
+        t_mean: np.ndarray, shape (time, lat, lon) - monthly mean temperature [°C]
+        days:   np.ndarray, shape (time, lat, lon) - number of days per month
+
+    Returns:
+        snow_storage: np.ndarray, shape (time, lat, lon) - snow water equivalent [mm]
+        snow_melt:    np.ndarray, shape (time, lat, lon) - monthly snowmelt [mm month⁻¹]
+        rain:         np.ndarray, shape (time, lat, lon) - monthly rainfall [mm month⁻¹]
     """
     # Degree-day factor [mm / (°C * day)] controlling melt rate per degree above melt temperature
     degree_day = 4.0
@@ -59,17 +70,13 @@ def snow_model(
 
 def add_snow_variables(ds: xr.Dataset) -> xr.Dataset:
     """
-    Adds snow storage, snowmelt and rain variables to the dataset.
+    Run the snow model and add the results as new variables to the dataset.
 
-    Parameters
-    ----------
-    ds : xr.Dataset
-        Dataset must contain: precip_mm_month, t_mean_celsius, days_in_month
+    Arguments:
+        ds: xr.Dataset - must contain precip_mm_month, t_mean_celsius, days_in_month
 
-    Returns
-    -------
-    xr.Dataset
-        Dataset with added variables: snow_storage, snow_melt
+    Returns:
+        xr.Dataset with three additional variables: snow_storage, snow_melt, rain
     """
     # Extract necessary variables from the dataset
     precip = ds["precip_mm_month"].values
