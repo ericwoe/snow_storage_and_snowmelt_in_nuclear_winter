@@ -2,7 +2,6 @@ import pickle
 import tarfile
 import urllib.request
 from pathlib import Path
-import pandas as pd
 import cftime
 import geopandas as gpd
 import matplotlib.pyplot as plt
@@ -195,9 +194,7 @@ for name, ds in datasets.items():
     inertias_df = elbow_method(
         timeseries_subset, max_clusters=10, save_dir=clustering_dir / "elbow"
     )
-    inertias_df = pd.read_csv(
-        clustering_dir / "elbow" / "inertias.csv", sep=";", index_col=0
-    )
+
     plot_elbow(inertias_df, save_dir=clustering_dir / "elbow")
 
     n_clusters = 5 if name == "47" else 3
@@ -445,7 +442,7 @@ for ax in axes_flat1[:n_rivers]:
 for ax in axes_flat1[n_rivers:]:
     ax.set_visible(False)
 
-plt.savefig(basin_analysis_dir / "river_basin_annual_anomalies.png", dpi=300)
+plt.savefig(basin_analysis_dir / "river_basin_annual_anomalies.png", dpi=600)
 plt.close(fig)
 
 
@@ -475,7 +472,7 @@ for ax, (river, (scenario, control)), idx in zip(
 for ax in axes_flat4[n_rivers:]:
     ax.set_visible(False)
 
-plt.savefig(basin_analysis_dir / "river_basin_annual_snowmelt_anomalies.png", dpi=300)
+plt.savefig(basin_analysis_dir / "river_basin_annual_snowmelt_anomalies.png", dpi=600)
 plt.close(fig4)
 
 # Monthly Mean Discharge from Snowmelt and Rain
@@ -512,5 +509,5 @@ for ax in axes_flat3[:n_rivers]:
     ax.set_yticks(yticks)
     ax.set_yticklabels([str(abs(int(y))) for y in yticks])
 
-plt.savefig(basin_analysis_dir / "all_rivers_monthly_bars_rain_snow.png", dpi=300)
+plt.savefig(basin_analysis_dir / "all_rivers_monthly_bars_rain_snow.png", dpi=350)
 plt.close(fig3)

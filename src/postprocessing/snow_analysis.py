@@ -269,7 +269,7 @@ def plot_combined_snow_analysis(
         )
 
     plt.tight_layout()
-    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    fig.savefig(output_path, dpi=600, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -537,7 +537,7 @@ def plot_hovmoeller_mean_snow_storage(
 
     fig.savefig(
         os.path.join(savedir, "mean_snow_storage_anomaly.png"),
-        dpi=300,
+        dpi=600,
         bbox_inches="tight",
     )
     plt.close(fig)

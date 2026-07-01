@@ -141,7 +141,7 @@ def plot_annual_anomaly(
     if standalone:
         plt.tight_layout()
         plt.savefig(
-            os.path.join(save_dir, f"{river}_annual_{title}_sum_anomaly.png"), dpi=300
+            os.path.join(save_dir, f"{river}_annual_{title}_sum_anomaly.png"), dpi=600
         )
         plt.close(fig)
 
@@ -232,6 +232,6 @@ def plot_monthly_bars_rain_snow(
     if standalone:
         plt.tight_layout()
         plt.savefig(
-            os.path.join(save_dir, f"{river}_monthly_bars_rain_snow.png"), dpi=300
+            os.path.join(save_dir, f"{river}_monthly_bars_rain_snow.png"), dpi=350
         )
         plt.close()

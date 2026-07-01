@@ -33,18 +33,16 @@ def plot_elbow(
     """
     os.makedirs(save_dir, exist_ok=True)
 
-    fig, ax_elbow = plt.subplots(figsize=(6, 5))
+    fig, ax_elbow = plt.subplots(figsize=(6, 3))
 
-    ax_elbow.plot(
-        inertias_df.index, inertias_df["inertia"], marker="o", color=color
-    )
+    ax_elbow.plot(inertias_df.index, inertias_df["inertia"], marker="o", color=color)
     ax_elbow.set_xlabel("Number of clusters")
     ax_elbow.set_ylabel("Distortion")
     ax_elbow.set_title("Elbow method")
 
     plt.tight_layout()
     plt.savefig(
-        os.path.join(save_dir, "elbow_silhouette.png"), dpi=300, bbox_inches="tight"
+        os.path.join(save_dir, "elbow_silhouette.png"), dpi=600, bbox_inches="tight"
     )
     plt.close()
 
@@ -295,7 +293,7 @@ def plot_cluster_combined(
 
     plt.savefig(
         os.path.join(save_path, f"combined_{n_clusters}_clusters_{title}.png"),
-        dpi=300,
+        dpi=600,
         bbox_inches="tight",
     )
     plt.close()
