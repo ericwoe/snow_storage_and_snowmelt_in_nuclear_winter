@@ -2,6 +2,7 @@ import sys
 import os
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from src.processing.clustering import prepare_time_series
 import xarray as xr
 import matplotlib.patches as mpatches
@@ -14,6 +15,38 @@ from matplotlib.ticker import MultipleLocator
 import matplotlib.lines as mlines
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
+
+def plot_elbow(
+    inertias_df: pd.DataFrame,
+    save_dir: str,
+    color: str = "#4575b4",
+):
+    """
+    Plot the Elbow method (inertia vs. k).
+
+    Arguments:
+        inertias_df:    pd.DataFrame, index "k" - inertia values, as returned by
+                        elbow_method
+        save_dir:       str - directory where the plot is saved
+        color:          str - line/marker color for the plot
+    """
+    os.makedirs(save_dir, exist_ok=True)
+
+    fig, ax_elbow = plt.subplots(figsize=(6, 5))
+
+    ax_elbow.plot(
+        inertias_df.index, inertias_df["inertia"], marker="o", color=color
+    )
+    ax_elbow.set_xlabel("Number of clusters")
+    ax_elbow.set_ylabel("Distortion")
+    ax_elbow.set_title("Elbow method")
+
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(save_dir, "elbow_silhouette.png"), dpi=300, bbox_inches="tight"
+    )
+    plt.close()
 
 
 def weighted_quantile(

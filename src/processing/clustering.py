@@ -1,6 +1,6 @@
 import xarray as xr
 import numpy as np
-from tslearn.clustering import TimeSeriesKMeans, silhouette_score
+from tslearn.clustering import TimeSeriesKMeans
 from tslearn.preprocessing import TimeSeriesScalerMinMax
 from datetime import datetime
 import os
@@ -71,7 +71,7 @@ def time_series_analysis(timeseries_object: np.ndarray, n_clusters: int):
     return labels, km
 
 
-def elbow_and_silhouette_method(timeseries, max_clusters, save_dir):
+def elbow_method(timeseries, max_clusters, save_dir):
     """
     Finds the optimal number of clusters using the elbow method
     https://predictivehacks.com/k-means-elbow-method-code-for-python/
@@ -81,13 +81,11 @@ def elbow_and_silhouette_method(timeseries, max_clusters, save_dir):
         save_dir: path-like - directory where results (CSVs, labels, models) are saved
     Returns:
         inertias_df: DataFrame with inertias for each k
-        silhouettes_df: DataFrame with silhouette scores for each k
     """
     checkpoint_dir = save_dir
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     checkpoint_inertias = os.path.join(checkpoint_dir, "inertias.csv")
-    checkpoint_silhouettes = os.path.join(checkpoint_dir, "silhouette_scores.csv")
 
     # Load existing results if available
     if os.path.exists(checkpoint_inertias):
@@ -99,16 +97,6 @@ def elbow_and_silhouette_method(timeseries, max_clusters, save_dir):
     else:
         inertias = {}
 
-    if os.path.exists(checkpoint_silhouettes):
-        print(f"Loading existing Silhouette Scores from {checkpoint_silhouettes}")
-        silhouettes_df = pd.read_csv(checkpoint_silhouettes, sep=";", index_col=0)
-        silhouettes = {
-            int(k): v
-            for k, v in silhouettes_df.to_dict()[silhouettes_df.columns[0]].items()
-        }
-    else:
-        silhouettes = {}
-
     # Normalize once
     print("Apply MinMax-Scaling method")
     scaler = TimeSeriesScalerMinMax()
@@ -116,7 +104,7 @@ def elbow_and_silhouette_method(timeseries, max_clusters, save_dir):
 
     # Try different k values
     for i in range(2, max_clusters + 1):
-        if i in inertias and i in silhouettes:
+        if i in inertias:
             print(f"k={i} already computed, skipping...")
             continue
 
@@ -139,13 +127,8 @@ def elbow_and_silhouette_method(timeseries, max_clusters, save_dir):
         # Save inertia
         inertias[i] = km.inertia_
 
-        # Compute silhouette score
-        sil_score = silhouette_score(timeseries_scaled, labels, metric="dtw")
-        silhouettes[i] = sil_score
-
         print(f"✓ k={i} finished!")
         print(f"  Inertia: {km.inertia_:.2f}")
-        print(f"  Silhouette Score: {sil_score:.4f}")
 
         # Save labels and model
         labels_path = os.path.join(checkpoint_dir, f"{i}_cluster_labels.npy")
@@ -154,18 +137,12 @@ def elbow_and_silhouette_method(timeseries, max_clusters, save_dir):
         with open(model_path, "wb") as f:
             pickle.dump(km, f)
 
-        # Save both CSVs after each k
+        # Save inertias CSV after each k
         inertias_df = pd.DataFrame.from_dict(
             inertias, orient="index", columns=["inertia"]
         )
         inertias_df.index.name = "k"
         inertias_df.to_csv(checkpoint_inertias, sep=";")
-
-        silhouettes_df = pd.DataFrame.from_dict(
-            silhouettes, orient="index", columns=["silhouette_score"]
-        )
-        silhouettes_df.index.name = "k"
-        silhouettes_df.to_csv(checkpoint_silhouettes, sep=";")
 
         print("→ Results saved")
         print(f"finished at {datetime.now().strftime('%H:%M:%S')}")
@@ -174,7 +151,7 @@ def elbow_and_silhouette_method(timeseries, max_clusters, save_dir):
     print("All Clusterings finished!")
     print(f"{'='*60}")
 
-    return inertias_df, silhouettes_df
+    return inertias_df
 
 
 if __name__ == "__main__":
@@ -190,7 +167,7 @@ if __name__ == "__main__":
     timeseries_subset = timeseries[indices]
     print(f"Shape of Subset: {timeseries_subset.shape}")
 
-    elbow_and_silhouette_method(
+    elbow_method(
         timeseries_subset,
         max_clusters=10,
         save_dir="./results/Control/clustering/elbow_silhouette",

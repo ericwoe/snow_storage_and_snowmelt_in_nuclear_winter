@@ -2,7 +2,7 @@ import pickle
 import tarfile
 import urllib.request
 from pathlib import Path
-
+import pandas as pd
 import cftime
 import geopandas as gpd
 import matplotlib.pyplot as plt
@@ -15,7 +15,7 @@ from src.processing.snow_model import add_snow_variables
 from src.processing.clustering import (
     prepare_time_series,
     time_series_analysis,
-    elbow_and_silhouette_method,
+    elbow_method,
 )
 from src.postprocessing.snow_analysis import (
     change_time,
@@ -25,7 +25,10 @@ from src.postprocessing.snow_analysis import (
     plot_hovmoeller_mean_snow_storage,
     DEFAULT_SCENARIO_COLORS,
 )
-from src.postprocessing.plot_clustering import plot_cluster_combined
+from src.postprocessing.plot_clustering import (
+    plot_cluster_combined,
+    plot_elbow,
+)
 from src.postprocessing.basin_analysis import (
     convert_mm_month_to_discharge_m3_month,
     monthly_discharge_sum_m3,
@@ -164,6 +167,7 @@ for name, config in SCENARIOS.items():
 
     datasets[name] = ds
 
+# compute cell area for area weighted means
 cell_area = compute_grid_cell_area(datasets["Control"].snow_storage.isel(time=0))
 
 
@@ -171,7 +175,7 @@ cell_area = compute_grid_cell_area(datasets["Control"].snow_storage.isel(time=0)
 # CLUSTERING - 47 Tg Scenario and Control
 ##################################################################################################
 
-"""print("\n=== CLUSTERING ===")
+print("\n=== CLUSTERING ===")
 for name, ds in datasets.items():
     if name not in ["47", "Control"]:
         continue
@@ -182,14 +186,19 @@ for name, ds in datasets.items():
 
     timeseries = prepare_time_series(ds.snow_storage)
 
-    # Subset for Elbow Method and Silhouette Score
+    # Subset for Elbow Method
     subset_size = int(0.3 * timeseries.shape[0])
-    indices = np.random.choice(timeseries.shape[0], subset_size, replace=False)
+    rng = np.random.default_rng(seed=42)
+    indices = rng.choice(timeseries.shape[0], subset_size, replace=False)
     timeseries_subset = timeseries[indices]
 
-    elbow_and_silhouette_method(
-        timeseries_subset, max_clusters=10, save_dir=clustering_dir / "elbow_silhouette"
+    inertias_df = elbow_method(
+        timeseries_subset, max_clusters=10, save_dir=clustering_dir / "elbow"
     )
+    inertias_df = pd.read_csv(
+        clustering_dir / "elbow" / "inertias.csv", sep=";", index_col=0
+    )
+    plot_elbow(inertias_df, save_dir=clustering_dir / "elbow")
 
     n_clusters = 5 if name == "47" else 3
     labels, km = time_series_analysis(timeseries, n_clusters=n_clusters)
@@ -220,7 +229,7 @@ for name, ds in datasets.items():
     # Save cluster labels and model
     np.save(models_dir / f"{n_clusters}_cluster_labels.npy", labels)
     with open(models_dir / f"kmeans_model_{n_clusters}_clusters.pkl", "wb") as f:
-        pickle.dump(km, f)"""
+        pickle.dump(km, f)
 
 
 ##################################################################################################

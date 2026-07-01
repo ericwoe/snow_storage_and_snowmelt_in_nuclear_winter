@@ -1547,7 +1547,6 @@ dependencies = [
     { name = "numba" },
     { name = "numpy" },
     { name = "pathlib" },
-    { name = "pyeto" },
     { name = "pyproj" },
     { name = "pytest" },
     { name = "regionmask" },
@@ -1572,7 +1571,6 @@ requires-dist = [
     { name = "numba", specifier = "==0.58.1" },
     { name = "numpy", specifier = ">=1.26.4" },
     { name = "pathlib", specifier = ">=1.0.1" },
-    { name = "pyeto", git = "https://github.com/woodcrafty/PyETo.git" },
     { name = "pyproj", specifier = "==3.7" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "regionmask", specifier = ">=0.13.0" },
@@ -1613,11 +1611,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/cd/05/0a34433a064256a57
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8e/37/efad0257dc6e593a18957422533ff0f87ede7c9c6ea010a2177d738fb82f/pure_eval-0.2.3-py3-none-any.whl", hash = "sha256:1db8e35b67b3d218d818ae653e27f06c3aa420901fa7b081ca98cbedc874e0d0", size = 11842, upload-time = "2024-07-21T12:58:20.04Z" },
 ]
-
-[[package]]
-name = "pyeto"
-version = "0.2.0"
-source = { git = "https://github.com/woodcrafty/PyETo.git#79ddd88d727c7ebdad0ce26e220528d2921b66ea" }
 
 [[package]]
 name = "pygments"
