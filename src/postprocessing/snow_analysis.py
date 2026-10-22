@@ -8,37 +8,10 @@ from matplotlib.colors import SymLogNorm
 from matplotlib.ticker import FixedLocator
 from cartopy import crs as ccrs
 import cartopy.feature as cfeature
-from src.utilities import compute_grid_cell_area
+from src.utilities import compute_grid_cell_area, change_time
 
 DEFAULT_SCENARIO_COLORS = ["#abd9e9", "#74add1", "#4575b4"]
 SOOT_INJECTION_MONTH = 4
-
-
-def change_time(ds):
-    """
-    Shift the time coordinate of a dataset back by one month, in place.
-
-    The input datasets are assumed to use a no-leap calendar where each
-    timestamp marks the end of the averaging period (e.g., a value labeled
-    February actually represents January). This function relabels each
-    timestamp to the preceding month, so that month 1 corresponds to the
-    first full month after the start of the simulation.
-
-    Parameters
-    ----------
-    ds : xr.Dataset
-        Dataset with a "time" coordinate using a no-leap cftime calendar.
-        The "time" coordinate is modified in place.
-    """
-    new_time = [
-        cftime.DatetimeNoLeap(
-            t.year if t.month > 1 else t.year - 1,
-            t.month - 1 if t.month > 1 else 12,
-            1,
-        )
-        for t in ds.time.values
-    ]
-    ds.coords["time"] = new_time
 
 
 def plot_combined_snow_analysis(
