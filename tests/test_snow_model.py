@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from snow_model import calculate_snow_dynamics
+from snow_model import snow_model
 
 
 def test_output_shape():
@@ -8,7 +8,7 @@ def test_output_shape():
     t_mean = np.zeros((12, 3, 3), dtype=np.float32)
     days = np.ones(12, dtype=np.float32) * 30
 
-    storage, melt = calculate_snow_dynamics(precip, t_mean, days)
+    storage, melt, _ = snow_model(precip, t_mean, days)
 
     assert storage.shape == (12, 3, 3)
     assert melt.shape == (12, 3, 3)
@@ -19,7 +19,7 @@ def test_melt_never_exceeds_storage():
     t_mean = np.array([[[-5.0]], [[20.0]]], dtype=np.float32)
     days = np.array([31, 31], dtype=np.float32)
 
-    storage, melt = calculate_snow_dynamics(precip, t_mean, days)
+    storage, melt, _ = snow_model(precip, t_mean, days)
 
     assert melt[1, 0, 0] <= storage[0, 0, 0]
     assert storage[1, 0, 0] >= 0.0
@@ -30,7 +30,7 @@ def test_degree_day_formula():
     t_mean = np.array([[[-5.0]], [[5.0]]], dtype=np.float32)
     days = np.array([31, 10], dtype=np.float32)
 
-    storage, melt = calculate_snow_dynamics(precip, t_mean, days)
+    storage, melt, _ = snow_model(precip, t_mean, days)
 
     potential_melt = 10 * 4.0 * (5.0 - 0.0)  # = 200mm
     available_snow = storage[0, 0, 0]  # = 100mm
@@ -45,7 +45,7 @@ def test_spatial_independence():
     t_mean = np.array([[[-5.0, 5.0]]], dtype=np.float32)
     days = np.array([31], dtype=np.float32)
 
-    storage, melt = calculate_snow_dynamics(precip, t_mean, days)
+    storage, melt, _ = snow_model(precip, t_mean, days)
 
     assert storage[0, 0, 0] == 50.0  # kalter Pixel: Schnee
     assert storage[0, 0, 1] == 0.0  # warmer Pixel: kein Schnee
@@ -56,7 +56,7 @@ def test_storage_mass_balance():
     t_mean = np.array([[[-5.0]], [[-3.0]], [[2.0]]], dtype=np.float32)
     days = np.array([31, 28, 31], dtype=np.float32)
 
-    storage, melt = calculate_snow_dynamics(precip, t_mean, days)
+    storage, melt, _ = snow_model(precip, t_mean, days)
 
     t_thresh = 1.7  # aus dem Modell
 

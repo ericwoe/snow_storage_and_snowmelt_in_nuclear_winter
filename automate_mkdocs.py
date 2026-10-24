@@ -3,10 +3,11 @@
 import ast
 import importlib
 import json
-import yaml
 from collections import defaultdict
 from pathlib import Path
 from typing import Union
+
+import yaml
 
 
 def add_val(indices, value, data):
@@ -95,7 +96,7 @@ def automate_mkdocs_from_docstring(
             page = f"{mkdocs_dir}/{relative_path}"
             split_page = page.split("/")
             split_page = ["  - " + s for s in split_page]
-            page += f".md"
+            page += ".md"
 
             add_val(split_page, page, structure)
             for class_name, class_list in function_names.items():
