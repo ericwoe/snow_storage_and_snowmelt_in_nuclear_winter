@@ -17,7 +17,7 @@ natural_earth_land_polygons_110m/
     https://www.naturalearthdata.com/downloads/110m-physical-vectors/110m-land/
     Used to build the land mask (main.py reads the same file from the URL above).
 
-HydroBasins/cache/hybas_<region>_lev04.gpkg
+HydroBasins/hybas_<region>_lev04.gpkg
     HydroBASINS v1c, standard, level 4, regions eu, as, si, na; converted from
     shapefile to GeoPackage by load_basin_region() in
     src/preprocessing/download_data.py (downloaded 2026-06-30).

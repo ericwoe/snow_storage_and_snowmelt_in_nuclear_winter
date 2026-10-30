@@ -412,7 +412,7 @@ HYDROBASINS_URLS = {
     "si": f"{_HYDROBASINS_BASE}/hybas_si_lev01-12_v1c.zip",
     "na": f"{_HYDROBASINS_BASE}/hybas_na_lev01-12_v1c.zip",
 }
-HYDROBASINS_CACHE_DIR = Path("./data/HydroBasins/cache")
+HYDROBASINS_DIR = Path("./data/HydroBasins")
 
 MAIN_RIVERS = {
     "Rhine": ("eu", 2040023010),
@@ -455,7 +455,7 @@ for river, (region, river_id) in MAIN_RIVERS.items():
     # level-4 sub-basins that belong to this river's main basin ID.
     if region not in _basin_gdf_cache:
         _basin_gdf_cache[region] = load_basin_region(
-            region, HYDROBASINS_CACHE_DIR, HYDROBASINS_URLS
+            region, HYDROBASINS_DIR, HYDROBASINS_URLS
         )
     basins_lev4 = _basin_gdf_cache[region]
     river_basin = basins_lev4[basins_lev4["MAIN_BAS"] == river_id]
