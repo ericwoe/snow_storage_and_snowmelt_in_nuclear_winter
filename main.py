@@ -72,28 +72,28 @@ plt.style.use(
 
 SCENARIOS = {
     "Control": {
-        "data_dir": "./data/Model_Output_From_Harrison/Temp_Precip/nw_cntrl_03",
+        "data_dir": "./data/CESM_output_from_harrison/Temp_Precip/nw_cntrl_03",
         "pattern": "*.nc",
         "result_path": "./results/Control/snow_control.nc",
         "osf_url": "https://osf.io/download/w6qb5/",
         "osf_archive": "nw_cntrl_03.TS_TSMN_TSMX_PRECC_PRECL_v2024-12-12.nc.tar.gz",
     },
     "16": {
-        "data_dir": "./data/Model_Output_From_Harrison/Temp_Precip/nw_targets_04",
+        "data_dir": "./data/CESM_output_from_harrison/Temp_Precip/nw_targets_04",
         "pattern": "*.nc",
         "result_path": "./results/16/snow_16.nc",
         "osf_url": "https://osf.io/download/n2vtj/",
         "osf_archive": "nw_targets_04.TS_TSMN_TSMX_PRECC_PRECL_v2024-12-12.nc.tar.gz",
     },
     "47": {
-        "data_dir": "./data/Model_Output_From_Harrison/Temp_Precip/nw_targets_05",
+        "data_dir": "./data/CESM_output_from_harrison/Temp_Precip/nw_targets_05",
         "pattern": "*.nc",
         "result_path": "./results/47/snow_47.nc",
         "osf_url": "https://osf.io/download/4uysj/",
         "osf_archive": "nw_targets_05.TS_TSMN_TSMX_PRECC_PRECL_v2024-12-12.nc.tar.gz",
     },
     "150": {
-        "data_dir": "./data/Model_Output_From_Harrison/Temp_Precip/nw_ur_150_07",
+        "data_dir": "./data/CESM_output_from_harrison/Temp_Precip/nw_ur_150_07",
         "pattern": "*.nc",
         "result_path": "./results/150/snow_150.nc",
         "osf_url": "https://osf.io/download/wnvxf/",

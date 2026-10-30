@@ -129,7 +129,7 @@ dmypy.json
 .pyre/
 
 #data files: CESM model output is downloaded by main.py (see data/readme.txt)
-data/Model_Output_From_Harrison/
+data/CESM_output_from_harrison/
 data/alt/
 
 #result files: figures, cluster labels and models are committed; the snow

@@ -1,6 +1,6 @@
 Input data for main.py. Everything except the CESM model output is committed.
 
-Model_Output_From_Harrison/Temp_Precip/      NOT committed (262 MB)
+CESM_output_from_harrison/Temp_Precip/      NOT committed (262 MB)
     CESM monthly output (TS, TSMN, TSMX, PRECC, PRECL) for the control run and
     the 16, 47 and 150 Tg soot-injection scenarios. main.py downloads and
     extracts it automatically if missing. Source (OSF):
