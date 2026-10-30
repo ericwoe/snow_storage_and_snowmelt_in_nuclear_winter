@@ -1,6 +1,6 @@
 Input data for main.py. Everything except the CESM model output is committed.
 
-CESM_output_from_harrison/Temp_Precip/      NOT committed (262 MB)
+cesm_output_from_harrison/temp_precip/      NOT committed (262 MB)
     CESM monthly output (TS, TSMN, TSMX, PRECC, PRECL) for the control run and
     the 16, 47 and 150 Tg soot-injection scenarios. main.py downloads and
     extracts it automatically if missing. Source (OSF):
@@ -17,7 +17,7 @@ natural_earth_land_polygons_110m/
     https://www.naturalearthdata.com/downloads/110m-physical-vectors/110m-land/
     Used to build the land mask (main.py reads the same file from the URL above).
 
-HydroBasins/hybas_<region>_lev04.gpkg
+hydrobasins_level4/hybas_<region>_lev04.gpkg
     HydroBASINS v1c, standard, level 4, regions eu, as, si, na; converted from
     shapefile to GeoPackage by load_basin_region() in
     src/preprocessing/download_data.py (downloaded 2026-06-30).
@@ -27,10 +27,7 @@ HydroBasins/hybas_<region>_lev04.gpkg
     baseline data and new approaches to study the world's large river systems.
     Hydrological Processes, 27(15): 2171-2186. https://doi.org/10.1002/hyp.9740
 
-interim/
+derived_masks/
     Derived on the CESM grid (lat 96 x lon 144) by the code in this repository.
     land_mask_neu.nc            Land fraction per grid cell from Natural Earth
                                 (create_mask in src/utilities.py); used by main.py.
-    land_mask_110.nc,
-    permanent_snow_cells.nc,
-    alte Masken/                Earlier versions, not used by main.py.
