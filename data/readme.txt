@@ -11,7 +11,7 @@ Model_Output_From_Harrison/Temp_Precip/      NOT committed (262 MB)
     Archive names: <run>.TS_TSMN_TSMX_PRECC_PRECL_v2024-12-12.nc.tar.gz
     Citation: TODO
 
-ne_110m_land/
+natural_earth_land_polygons_110m/
     Natural Earth 1:110m physical land polygons, version 4.1.0 (public domain).
     https://naciscdn.org/naturalearth/110m/physical/ne_110m_land.zip
     https://www.naturalearthdata.com/downloads/110m-physical-vectors/110m-land/
@@ -29,7 +29,7 @@ HydroBasins/cache/hybas_<region>_lev04.gpkg
 
 interim/
     Derived on the CESM grid (lat 96 x lon 144) by the code in this repository.
-    land_mask_neu.nc            Land fraction per grid cell from ne_110m_land
+    land_mask_neu.nc            Land fraction per grid cell from Natural Earth
                                 (create_mask in src/utilities.py); used by main.py.
     land_mask_110.nc,
     permanent_snow_cells.nc,
