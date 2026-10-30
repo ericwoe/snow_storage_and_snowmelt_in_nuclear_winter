@@ -106,7 +106,7 @@ RESULT_DIRS = {
 }
 
 LAND_SHAPE_URL = "https://naciscdn.org/naturalearth/110m/physical/ne_110m_land.zip"
-LAND_MASK_FILE_PATH = "./data/derived_masks/land_mask_neu.nc"
+LAND_MASK_FILE_PATH = "./data/land_fraction_mask/land_mask_neu.nc"
 # Start/end are deliberately set to month 2 and month 1 (not month 1 for both):
 # change_time() later shifts every timestamp back by one month (raw timestamps
 # mark the end of the averaging period). This offset exactly compensates for

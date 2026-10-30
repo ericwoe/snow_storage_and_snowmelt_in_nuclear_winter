@@ -27,7 +27,7 @@ hydrobasins_level4/hybas_<region>_lev04.gpkg
     baseline data and new approaches to study the world's large river systems.
     Hydrological Processes, 27(15): 2171-2186. https://doi.org/10.1002/hyp.9740
 
-derived_masks/
+land_fraction_mask/
     Derived on the CESM grid (lat 96 x lon 144) by the code in this repository.
     land_mask_neu.nc            Land fraction per grid cell from Natural Earth
                                 (create_mask in src/utilities.py); used by main.py.
