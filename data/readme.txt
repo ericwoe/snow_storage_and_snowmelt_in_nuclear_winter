@@ -9,7 +9,11 @@ cesm_output_from_harrison/temp_precip/      NOT committed (262 MB)
         nw_targets_05 (47 Tg)    https://osf.io/download/4uysj/
         nw_ur_150_07  (150 Tg)   https://osf.io/download/wnvxf/
     Archive names: <run>.TS_TSMN_TSMX_PRECC_PRECL_v2024-12-12.nc.tar.gz
-    Citation: TODO
+    Harrison, C., Faulkner, W., Coupe, J., Asante, E. K., Bardeen, C., Garza, V.,
+    Heneghan, R., Jägermeyr, J., Lovenduski, N. S., Robock, A., Rojas, K.,
+    Scherrer, K., Toon, O. B., Xia, L. (2026): Accessible Climate and Impact Model
+    Output for Studying the Human and Environmental Impacts of Nuclear Conflict.
+    Geoscience Data Journal, 13(3): e70076. https://doi.org/10.1002/gdj3.70076
 
 natural_earth_land_polygons_110m/
     Natural Earth 1:110m physical land polygons, version 4.1.0 (public domain).
