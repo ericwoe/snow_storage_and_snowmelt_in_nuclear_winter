@@ -139,3 +139,5 @@ results alt/
 
 # macOS
 .DS_Store
+# Microsoft Office lock files
+~$*
